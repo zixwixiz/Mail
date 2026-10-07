@@ -215,8 +215,16 @@ class JluRepository(
     fun getSavedVerification(): Flow<EndpointVerificationEntity?> =
         database.verificationDao().getVerification()
 
-    fun runProtocolVerificationFlow(host: String, ewsUrl: String): Flow<ProtocolVerificationSummary> =
-        protocolVerifier.executeVerificationFlow(host, ewsUrl)
+    fun runProtocolVerificationFlow(host: String, ewsUrl: String, mailboxId: String): Flow<ProtocolVerificationSummary> {
+        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId }
+        return protocolVerifier.executeVerificationFlow(
+            host = host,
+            ewsUrl = ewsUrl,
+            username = mailbox?.username,
+            password = mailbox?.let { sessionPasswords[it.id] },
+            mailboxEmail = mailbox?.emailAddress
+        )
+    }
 
     suspend fun saveVerificationResult(summary: ProtocolVerificationSummary) {
         database.verificationDao().saveVerification(
