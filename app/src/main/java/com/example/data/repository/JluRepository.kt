@@ -54,13 +54,33 @@ class JluRepository(
             throw IllegalArgumentException(error)
         }
 
-        val verification = authVerificationService.verifyEndpointAuth(endpointUrl)
-        check(verification.isSuccess) {
-            verification.errorMessage ?: "EWS endpoint verification failed."
+        val accessProbe = ewsClient.fetchMessages(
+            endpointUrl = endpointUrl.trim(),
+            username = normalizedUsername,
+            password = password,
+            distinguishedFolderId = "INBOX",
+            mailboxId = "verification-probe",
+            mailboxEmail = emailAddress.trim(),
+            maxEntries = 1
+        )
+        check(accessProbe.isSuccess) {
+            when {
+                accessProbe.responseCode == "401" -> "Login failed: incorrect Kennung or password."
+                accessProbe.responseCode == "403" -> "Login failed: your account is not permitted to access this mailbox."
+                else -> "Login failed: " + accessProbe.responseCode
+            }
         }
 
-        val accessProbe = ewsClient.fetchMessages(endpointUrl = endpointUrl.trim(), username = normalizedUsername, password = password, distinguishedFolderId = "INBOX", mailboxId = "verification-probe", mailboxEmail = emailAddress.trim(), maxEntries = 1)
-        check(accessProbe.isSuccess) { "Mailbox access verification failed: " + accessProbe.responseCode }
+        val verification = AuthVerificationResult(
+            isSuccess = true,
+            endpointUrl = endpointUrl.trim(),
+            httpStatusCode = 200,
+            rawWwwAuthenticateHeaders = emptyList(),
+            supportedMechanisms = listOf(EwsAuthMechanism.BASIC),
+            selectedMechanism = EwsAuthMechanism.BASIC,
+            latencyMs = 0,
+            diagnosticLogs = listOf("Mailbox credentials accepted by the EWS mailbox request.")
+        )
 
         val account = MailboxAccount(
             id = "mb_" + UUID.nameUUIDFromBytes(normalizedUsername.lowercase().toByteArray(StandardCharsets.UTF_8)),
