@@ -213,7 +213,7 @@ fun AddAccountDialog(
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = if (username.isBlank()) "Enter your JLU username or staff account. The university address will be derived automatically." else "JLU email: " + if (username.contains("@")) username else "$username@uni-giessen.de",
+                text = "Enter your JLU account identifier and your complete university email address."
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
@@ -321,7 +321,7 @@ fun AddAccountDialog(
                     OutlinedTextField(
                         value = customEmail,
                         onValueChange = { customEmail = it },
-                        label = { Text("Custom Email Address (Optional)") },
+                        label = { Text("JLU Email Address") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("account_email_input"),
@@ -422,16 +422,10 @@ fun AddAccountDialog(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Submit Button
-            val isReady = username.isNotBlank() && password.isNotBlank() && !isVerifying
+            val isReady = username.isNotBlank() && password.isNotBlank() && customEmail.isNotBlank() && !isVerifying
             Button(
                 onClick = {
-                    val finalEmail = if (customEmail.isNotBlank()) {
-                        customEmail.trim()
-                    } else if (username.contains("@")) {
-                        username.trim()
-                    } else {
-                        "${username.trim()}@uni-giessen.de"
-                    }
+                    val finalEmail = customEmail.trim()
 
                     val finalDisplayName = if (customDisplayName.isNotBlank()) {
                         customDisplayName.trim()
