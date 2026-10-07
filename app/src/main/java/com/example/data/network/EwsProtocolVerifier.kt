@@ -170,7 +170,7 @@ class EwsProtocolVerifier(
         try {
             val request = Request.Builder()
                 .url(ewsUrl)
-                .head()
+                .get()
                 .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Auth Verification)")
                 .build()
 
