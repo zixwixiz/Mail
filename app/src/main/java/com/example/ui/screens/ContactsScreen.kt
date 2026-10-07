@@ -95,7 +95,7 @@ fun ContactsScreen(
         item {
             Column {
                 Text(
-                    text = "JLU University Directory & Contacts",
+                    text = "Contacts",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
