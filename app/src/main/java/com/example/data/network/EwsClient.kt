@@ -260,7 +260,8 @@ class EwsClient(
         folderId: String,
         subject: String,
         bodyHtml: String,
-        recipients: List<String>
+        recipients: List<String>,
+        senderEmail: String
     ): String {
         val sanitizedSubject = escapeXml(subject)
         val sanitizedBody = escapeXml(bodyHtml)
@@ -289,6 +290,11 @@ class EwsClient(
                   <m:Items>
                     <t:Message>
                       <t:ItemClass>IPM.Note</t:ItemClass>
+                      <t:From>
+                        <t:Mailbox>
+                          <t:EmailAddress>${escapeXml(senderEmail.trim())}</t:EmailAddress>
+                        </t:Mailbox>
+                      </t:From>
                       <t:Subject>$sanitizedSubject</t:Subject>
                       <t:Body BodyType="HTML">$sanitizedBody</t:Body>
                       <t:ToRecipients>
