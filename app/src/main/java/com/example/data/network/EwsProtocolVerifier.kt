@@ -18,6 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.HttpURLConnection
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLSocketFactory
 
@@ -122,9 +123,16 @@ class EwsProtocolVerifier(
             val socket = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket() as javax.net.ssl.SSLSocket
             socket.use {
                 it.soTimeout = 6000
-                it.sslParameters = it.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    it.sslParameters = it.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+                }
                 it.connect(InetSocketAddress(host, 443), 6000)
                 it.startHandshake()
+                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
+                    require(HttpURLConnection.getDefaultHostnameVerifier().verify(host, it.session)) {
+                        "TLS certificate hostname verification failed for $host"
+                    }
+                }
                 GateStepResult(
                     gateNumber = 1,
                     title = "Gate 1 — Network & TLS 443",
