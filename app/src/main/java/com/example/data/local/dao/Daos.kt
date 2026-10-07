@@ -24,7 +24,7 @@ interface MailDao {
     @Query("SELECT * FROM mail_messages WHERE id = :id")
     fun getMessageById(id: String): Flow<MailMessageEntity?>
 
-    @Query("SELECT * FROM mail_messages WHERE subject LIKE '%' || :query || '%' OR senderName LIKE '%' || :query || '%' OR bodyText LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM mail_messages WHERE mailboxId = :mailboxId AND (subject LIKE '%' || :query || '%' OR senderName LIKE '%' || :query || '%' OR bodyText LIKE '%' || :query || '%')")
     fun searchMessages(mailboxId: String, query: String): Flow<List<MailMessageEntity>>
 
     @Query("SELECT COUNT(*) FROM mail_messages WHERE mailboxId = :mailboxId AND isRead = 0")
@@ -51,7 +51,7 @@ interface CalendarDao {
     @Query("SELECT * FROM calendar_events WHERE mailboxId = :mailboxId ORDER BY startInstant ASC")
     fun getEvents(mailboxId: String): Flow<List<CalendarEventEntity>>
 
-    @Query("SELECT * FROM calendar_events WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR location LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM calendar_events WHERE mailboxId = :mailboxId AND (title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR location LIKE '%' || :query || '%')")
     fun searchEvents(mailboxId: String, query: String): Flow<List<CalendarEventEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -72,7 +72,7 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE mailboxId = :mailboxId ORDER BY isCompleted ASC, priority = 'HIGH' DESC, dueInstant ASC")
     fun getTasks(mailboxId: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM tasks WHERE mailboxId = :mailboxId AND (title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%')")
     fun searchTasks(mailboxId: String, query: String): Flow<List<TaskEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -93,7 +93,7 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE mailboxId = :mailboxId OR isJluDirectory = 1 ORDER BY displayName ASC")
     fun getContacts(mailboxId: String): Flow<List<ContactEntity>>
 
-    @Query("SELECT * FROM contacts WHERE displayName LIKE '%' || :query || '%' OR email LIKE '%' || :query || '%' OR department LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM contacts WHERE (mailboxId = :mailboxId OR isJluDirectory = 1) AND (displayName LIKE '%' || :query || '%' OR email LIKE '%' || :query || '%' OR department LIKE '%' || :query || '%')")
     fun searchContacts(mailboxId: String, query: String): Flow<List<ContactEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -111,7 +111,7 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE mailboxId = :mailboxId ORDER BY updatedTimestamp DESC")
     fun getNotes(mailboxId: String): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM notes WHERE mailboxId = :mailboxId AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%')")
     fun searchNotes(mailboxId: String, query: String): Flow<List<NoteEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
