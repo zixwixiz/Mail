@@ -1,8 +1,9 @@
 {
-  "name": "Remix JLU Mobile",
-  "description": "An open-source, modular Android productivity suite featuring integrated mail, calendar, and task management with offline-first synchronization.",
+  "name": "JLU Mobile",
+  "description": "Android mail and productivity client with real Exchange Web Services mail integration and local calendar, task, contact, and note features.",
   "requestFramePermissions": [],
   "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+    "EWS_MAIL",
+    "LOCAL_PRODUCTIVITY"
   ]
 }
