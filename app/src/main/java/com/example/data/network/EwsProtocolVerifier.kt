@@ -85,7 +85,8 @@ class EwsProtocolVerifier(
             return@flow
         }
 
-        val primaryMechanism = gate2Result.mechanisms.first()
+        val primaryMechanism = gate2Result.mechanisms.firstOrNull { it == EwsAuthMechanism.BASIC }
+            ?: gate2Result.mechanisms.first()
 
         summary = summary.copy(
             gate2 = gate2Result.stepResult,
