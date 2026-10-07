@@ -53,7 +53,7 @@ class EwsClient(
 ) {
     companion object {
         private const val TAG = "EwsClient"
-        const val DEFAULT_EWS_ENDPOINT = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
+        const val DEFAULT_EWS_ENDPOINT = EwsEndpointPolicy.DEFAULT_ENDPOINT
         private val XML_MEDIA_TYPE = "text/xml; charset=utf-8".toMediaType()
     }
 
