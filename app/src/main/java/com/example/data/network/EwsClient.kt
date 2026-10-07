@@ -232,8 +232,8 @@ class EwsClient(
             val executionLog = EwsExecutionLog(
                 action = "FindItem ($ewsFolder)",
                 endpointUrl = endpointUrl,
-                requestSoapXml = soapRequest,
-                responseSoapXml = responseBody,
+                requestSoapXml = redactSensitiveXml(soapRequest),
+                responseSoapXml = redactSensitiveXml(responseBody),
                 httpStatusCode = statusCode,
                 durationMs = duration,
                 isSuccess = statusCode in 200..299 && parseEwsResponseCode(responseBody) == "NoError"
@@ -254,7 +254,7 @@ class EwsClient(
             val executionLog = EwsExecutionLog(
                 action = "FindItem ($ewsFolder)",
                 endpointUrl = endpointUrl,
-                requestSoapXml = soapRequest,
+                requestSoapXml = redactSensitiveXml(soapRequest),
                 responseSoapXml = null,
                 httpStatusCode = null,
                 durationMs = duration,
