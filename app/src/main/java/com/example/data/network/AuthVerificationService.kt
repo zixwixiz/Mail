@@ -28,7 +28,7 @@ class AuthVerificationService(
     companion object {
         private const val TAG = "AuthVerificationService"
         const val DEFAULT_JLU_EWS_ENDPOINT = EwsEndpointPolicy.DEFAULT_ENDPOINT
-        const val DEFAULT_JLU_OWA_HOST = "owa.uni-giessen.de"
+        const val DEFAULT_JLU_OWA_HOST = EwsEndpointPolicy.DEFAULT_WEB_HOST
 
         fun createVerificationHttpClient(): OkHttpClient =
             OkHttpClient.Builder()
