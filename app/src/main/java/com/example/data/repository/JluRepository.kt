@@ -13,6 +13,7 @@ import com.example.data.model.ProtocolVerificationSummary
 import com.example.data.network.AuthVerificationResult
 import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
+import com.example.data.network.EwsEndpointPolicy
 import com.example.data.network.EwsProtocolVerifier
 import com.example.data.network.EwsReceiveResult
 import com.example.data.network.EwsSendResult
@@ -29,6 +30,7 @@ class JluRepository(
     val ewsClient: EwsClient = EwsClient()
 ) {
     private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
+    private val sessionPasswords = mutableMapOf<String, String>()
     val availableMailboxes: StateFlow<List<MailboxAccount>> = _availableMailboxes.asStateFlow()
 
     suspend fun verifyAndAddAccount(
@@ -44,6 +46,9 @@ class JluRepository(
         require(accountIdentifier.isNotBlank()) { "Account identifier is required." }
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
+        EwsEndpointPolicy.validate(endpointUrl, emailAddress)?.let { error ->
+            throw IllegalArgumentException(error)
+        }
 
         val verification = authVerificationService.verifyEndpointAuth(endpointUrl, accountIdentifier)
         check(verification.isSuccess) {
