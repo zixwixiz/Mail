@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 
 class JluRepository(
@@ -45,6 +46,7 @@ class JluRepository(
         password: String = ""
     ): Pair<MailboxAccount, AuthVerificationResult> {
         val normalizedUsername = EwsEndpointPolicy.normalizeUsername(accountIdentifier)
+        require(_availableMailboxes.value.none { it.username.equals(normalizedUsername, ignoreCase = true) }) { "This mailbox is already connected in the current session." }
         require(!isSharedMailbox) { "Shared mailboxes are not supported by the mobile connection; use JLU OWA." }
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
@@ -61,7 +63,7 @@ class JluRepository(
         check(accessProbe.isSuccess) { "Mailbox access verification failed: " + accessProbe.responseCode }
 
         val account = MailboxAccount(
-            id = "acc_" + UUID.randomUUID(),
+            id = "mb_" + UUID.nameUUIDFromBytes(normalizedUsername.lowercase().toByteArray(StandardCharsets.UTF_8)),
             displayName = displayName.ifBlank { accountIdentifier.trim() },
             emailAddress = emailAddress.trim(),
             isSharedMailbox = isSharedMailbox,
