@@ -111,12 +111,50 @@ fun TasksScreen(
                     }
                 }
             } else {
-                items(tasks, key = { it.id }) { task ->
-                    TaskItemCard(
-                        task = task,
-                        onToggle = { onToggleTask(task.id, task.isCompleted) },
-                        onDelete = { onDeleteTask(task.id) }
-                    )
+                val startOfToday = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000L
+
+                val grouped = tasks.groupBy { task ->
+                    when {
+                        task.isCompleted -> "Completed"
+                        task.dueInstant != null && task.dueInstant < startOfToday -> "Overdue"
+                        task.dueInstant != null && task.dueInstant < startOfTomorrow -> "Today"
+                        task.dueInstant != null -> "Upcoming"
+                        else -> "No due date"
+                    }
+                }
+                val order = listOf("Overdue", "Today", "Upcoming", "No due date", "Completed")
+
+                order.forEach { group ->
+                    val groupTasks = grouped[group].orEmpty()
+                    if (groupTasks.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = group,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = when (group) {
+                                    "Overdue" -> MaterialTheme.colorScheme.error
+                                    "Today" -> MaterialTheme.colorScheme.primary
+                                    "Completed" -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(groupTasks, key = { it.id }) { task ->
+                            TaskItemCard(
+                                task = task,
+                                onToggle = { onToggleTask(task.id, task.isCompleted) },
+                                onDelete = { onDeleteTask(task.id) }
+                            )
+                        }
+                    }
                 }
             }
         }
