@@ -213,7 +213,7 @@ fun AddAccountDialog(
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Enter your JLU account identifier and your complete university email address."
+                text = "Enter your JLU account identifier and your complete university email address.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
