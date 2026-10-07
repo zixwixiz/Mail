@@ -92,14 +92,3 @@ data class EndpointVerificationEntity(
     val lastVerifiedTimestamp: Long,
     val latencyMs: Long
 )
-
-@Entity(tableName = "sync_queue")
-data class SyncQueueEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val mailboxId: String,
-    val entityType: String, // MAIL, CALENDAR, TASK, NOTE
-    val action: String, // CREATE, UPDATE, DELETE
-    val payloadJson: String,
-    val status: String = "PENDING", // PENDING, SYNCED, FAILED
-    val timestamp: Long = System.currentTimeMillis()
-)
