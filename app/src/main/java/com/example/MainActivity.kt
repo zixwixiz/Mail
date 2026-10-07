@@ -1,5 +1,7 @@
 package com.example
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -453,12 +455,28 @@ fun JluMobileApp(viewModel: MainViewModel) {
         ) {
             SettingsScreen(
                 activeMailbox = activeMailbox,
-                onExportDiagnostics = {
-                    Toast.makeText(
-                        context,
-                        "Diagnostics are available on the verification screen; no report file was created.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                onShareDiagnostics = {
+                    val report = com.example.ui.DiagnosticsFormatter.sanitized(
+                        verificationSummary,
+                        savedVerification
+                    )
+                    try {
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, report)
+                                },
+                                "Share diagnostics"
+                            )
+                        )
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(
+                            context,
+                            "No app is available to share diagnostics.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 },
                 onAddAccountClick = {
                     isSettingsOpen = false
