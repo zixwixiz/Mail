@@ -508,11 +508,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            val mail = repository.searchMail(query).firstOrNull() ?: emptyList()
-            val events = repository.searchCalendar(query).firstOrNull() ?: emptyList()
-            val tasks = repository.searchTasks(query).firstOrNull() ?: emptyList()
-            val contacts = repository.searchContacts(query).firstOrNull() ?: emptyList()
-            val notes = repository.searchNotes(query).firstOrNull() ?: emptyList()
+            val mail = repository.searchMail(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
+            val events = repository.searchCalendar(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
+            val tasks = repository.searchTasks(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
+            val contacts = repository.searchContacts(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
+            val notes = repository.searchNotes(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
             _searchResults.value = UniversalSearchResults(
                 query = query,
                 mail = mail,
