@@ -48,7 +48,7 @@ import com.example.ui.theme.JluSuccess
 @Composable
 fun SettingsScreen(
     activeMailbox: MailboxAccount,
-    onExportDiagnostics: () -> Unit,
+    onShareDiagnostics: () -> Unit,
     onAddAccountClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -171,7 +171,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = "• Provider: Justus-Liebig-Universität Gießen", style = MaterialTheme.typography.bodySmall)
-                    Text(text = "• Platform: Microsoft Exchange Server 2019", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "• Platform: Exchange Web Services (EWS)", style = MaterialTheme.typography.bodySmall)
                     Text(text = "• Web Interface (OWA): https://owa.uni-giessen.de", style = MaterialTheme.typography.bodySmall)
                     Text(text = "• EWS SOAP URL: /EWS/Exchange.asmx", style = MaterialTheme.typography.bodySmall)
                     Text(text = "• Identity format: S-Kennung / ad\\Account", style = MaterialTheme.typography.bodySmall)
@@ -183,14 +183,14 @@ fun SettingsScreen(
         // Diagnostics Export
         item {
             OutlinedButton(
-                onClick = onExportDiagnostics,
+                onClick = onShareDiagnostics,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("export_diagnostics_button")
             ) {
                 Icon(Icons.Default.Info, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Export Sanitized Diagnostic Report")
+                Text("Share Sanitized Diagnostic Summary")
             }
         }
 
