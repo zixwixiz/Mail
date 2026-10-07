@@ -158,14 +158,6 @@ class JluRepository(
 
     suspend fun addCalendarEvent(event: CalendarEventEntity) {
         database.calendarDao().insert(event)
-        database.syncDao().queueOperation(
-            SyncQueueEntity(
-                mailboxId = event.mailboxId,
-                entityType = "CALENDAR",
-                action = "CREATE_EVENT",
-                payloadJson = "{\"title\":" + JSONObject.quote(event.title) + ",\"start\":" + event.startInstant + "}"
-            )
-        )
     }
 
     suspend fun updateRsvp(eventId: String, status: String) =
@@ -179,14 +171,6 @@ class JluRepository(
 
     suspend fun addTask(task: TaskEntity) {
         database.taskDao().insert(task)
-        database.syncDao().queueOperation(
-            SyncQueueEntity(
-                mailboxId = task.mailboxId,
-                entityType = "TASK",
-                action = "CREATE_TASK",
-                payloadJson = "{\"title\":" + JSONObject.quote(task.title) + "}"
-            )
-        )
     }
 
     suspend fun toggleTaskComplete(taskId: String, isCompleted: Boolean) {
