@@ -13,9 +13,7 @@ data class MailboxAccount(
     val isSharedMailbox: Boolean,
     val permission: MailboxPermission,
     val department: String,
-    val unreadCount: Int = 0,
     val username: String = "",
-    val password: String = "",
     val endpointUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
 ) {
     val isConfigured: Boolean
