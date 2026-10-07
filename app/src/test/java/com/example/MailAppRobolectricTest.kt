@@ -38,7 +38,7 @@ class MailAppRobolectricTest {
         }
 
         val result = AuthVerificationService(client)
-            .verifyEndpointAuth("https://example.test/EWS/Exchange.asmx", "test-user")
+            .verifyEndpointAuth("https://example.test/EWS/Exchange.asmx")
 
         assertTrue(result.isSuccess)
         assertTrue(EwsAuthMechanism.NEGOTIATE in result.supportedMechanisms)
