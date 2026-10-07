@@ -14,11 +14,10 @@ data class TranslationResult(
 )
 
 /**
- * Robust Academic Translation Service for JLU Gießen University Communications.
+ * Offline phrase-based translation assistance for common German academic and JLU-related text.
  *
- * Provides accurate, natural multilingual translation for any German campus email,
- * notice, exam announcement, or departmental message using a comprehensive semantic
- * lexical map and syntactic parser that handles any sentence structure.
+ * This engine runs locally and does not send message content to a cloud service.
+ * Coverage is intentionally limited; text without matching local rules can remain untranslated.
  */
 object TranslationService {
     val SUPPORTED_LANGUAGES = listOf(
