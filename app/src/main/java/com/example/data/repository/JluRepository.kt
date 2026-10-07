@@ -45,6 +45,7 @@ class JluRepository(
         password: String = ""
     ): Pair<MailboxAccount, AuthVerificationResult> {
         val normalizedUsername = EwsEndpointPolicy.normalizeUsername(accountIdentifier)
+        require(!isSharedMailbox) { "Shared mailboxes are not supported by the mobile connection; use JLU OWA." }
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
         EwsEndpointPolicy.validate(endpointUrl, emailAddress)?.let { error ->
