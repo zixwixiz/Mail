@@ -255,7 +255,6 @@ fun CreateTaskDialog(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var isHighPriority by remember { mutableStateOf(false) }
-    val now = System.currentTimeMillis()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -287,7 +286,7 @@ fun CreateTaskDialog(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("Task Title (e.g. FlexNow Nachmeldung)") },
+                label = { Text("Task Title") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("task_title_input")
@@ -317,8 +316,12 @@ fun CreateTaskDialog(
 
             Button(
                 onClick = {
-                    val due = now + 3 * 24 * 3600 * 1000L
-                    onCreate(title, description, due, if (isHighPriority) "HIGH" else "NORMAL")
+                    onCreate(
+                        title,
+                        description,
+                        null,
+                        if (isHighPriority) "HIGH" else "NORMAL"
+                    )
                 },
                 enabled = title.isNotBlank(),
                 modifier = Modifier
