@@ -82,7 +82,7 @@ class ExchangeHttpClient {
 
     private fun splitUsername(username: String): Pair<String, String> {
         val trimmed = username.trim()
-        val separator = trimmed.indexOf('\')
+        val separator = trimmed.indexOf('\\\\')
         return if (separator > 0 && separator < trimmed.lastIndex) {
             trimmed.substring(0, separator) to trimmed.substring(separator + 1)
         } else {
