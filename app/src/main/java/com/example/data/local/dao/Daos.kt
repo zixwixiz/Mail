@@ -128,4 +128,7 @@ interface VerificationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveVerification(entity: EndpointVerificationEntity)
+
+    @Query("DELETE FROM endpoint_verification WHERE mailboxId = :mailboxId")
+    suspend fun deleteVerification(mailboxId: String)
 }
