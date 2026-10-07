@@ -17,6 +17,7 @@ import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
 import com.example.data.network.EwsEndpointPolicy
 import com.example.data.network.EwsProtocolVerifier
+import com.example.data.network.JluImapClient
 import com.example.data.network.EwsReceiveResult
 import com.example.data.network.EwsSendResult
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +32,8 @@ class JluRepository(
     private val database: AppDatabase,
     private val protocolVerifier: EwsProtocolVerifier = EwsProtocolVerifier(),
     val authVerificationService: AuthVerificationService = AuthVerificationService(),
-    val ewsClient: EwsClient = EwsClient()
+    val ewsClient: EwsClient = EwsClient(),
+    val imapClient: JluImapClient = JluImapClient()
 ) {
     private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
     private val sessionPasswords = ConcurrentHashMap<String, String>()
@@ -52,25 +54,13 @@ class JluRepository(
         require(!isSharedMailbox) { "Shared mailboxes are not supported by the mobile connection; use JLU OWA." }
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
-        EwsEndpointPolicy.validate(endpointUrl, emailAddress)?.let { error ->
-            throw IllegalArgumentException(error)
-        }
 
-        val accessProbe = ewsClient.fetchMessages(
-            endpointUrl = endpointUrl.trim(),
+        val imapLogin = imapClient.verifyLogin(
             username = normalizedUsername,
-            password = password,
-            distinguishedFolderId = "INBOX",
-            mailboxId = "verification-probe",
-            mailboxEmail = emailAddress.trim(),
-            maxEntries = 1
+            password = password
         )
-        check(accessProbe.isSuccess) {
-            when {
-                accessProbe.responseCode == "401" -> "Login failed: incorrect Kennung or password."
-                accessProbe.responseCode == "403" -> "Login failed: your account is not permitted to access this mailbox."
-                else -> "Login failed: " + accessProbe.responseCode
-            }
+        check(imapLogin.isSuccess) {
+            imapLogin.errorMessage ?: "Login failed."
         }
 
         val verification = AuthVerificationResult(
@@ -78,10 +68,13 @@ class JluRepository(
             endpointUrl = endpointUrl.trim(),
             httpStatusCode = 200,
             rawWwwAuthenticateHeaders = emptyList(),
-            supportedMechanisms = listOf(EwsAuthMechanism.BASIC),
-            selectedMechanism = EwsAuthMechanism.BASIC,
+            supportedMechanisms = emptyList(),
+            selectedMechanism = EwsAuthMechanism.UNKNOWN,
             latencyMs = 0,
-            diagnosticLogs = listOf("Mailbox credentials accepted by the EWS mailbox request.")
+            diagnosticLogs = listOf(
+                "JLU credentials accepted by IMAP over TLS.",
+                "Server: exchange.uni-giessen.de:993"
+            )
         )
 
         val account = MailboxAccount(
