@@ -6,7 +6,6 @@ import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
 import com.example.data.local.entities.NoteEntity
-import com.example.data.local.entities.SyncQueueEntity
 import com.example.data.local.entities.TaskEntity
 import com.example.data.model.MailboxAccount
 import com.example.data.model.MailboxPermission
@@ -21,7 +20,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import org.json.JSONObject
 import java.util.UUID
 
@@ -242,14 +240,6 @@ class JluRepository(
                 latencyMs = summary.gate1.latencyMs + summary.gate2.latencyMs + summary.gate3.latencyMs
             )
         )
-    }
-
-    fun getPendingSyncCount(): Flow<Int> = database.syncDao().getPendingCount()
-    fun getPendingOperations(): Flow<List<SyncQueueEntity>> = database.syncDao().getPendingOperations()
-
-    suspend fun clearSyncQueue() {
-        getPendingOperations().firstOrNull().orEmpty()
-            .forEach { database.syncDao().markComplete(it.id) }
     }
 
     private fun escapeHtml(value: String) = value
