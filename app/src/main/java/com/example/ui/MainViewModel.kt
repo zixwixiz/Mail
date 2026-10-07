@@ -119,7 +119,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _activeMailbox.value = newAccount
                 _isAccountVerifying.value = false
                 _isAddAccountOpen.value = false
-                showFeedback("EWS endpoint verified (${result.selectedMechanism.displayName}); account added for this session.")
+                showFeedback("EWS endpoint verified (" + result.selectedMechanism.displayName + "); account added.")
+                syncMailboxData(newAccount.id)
             } catch (e: Throwable) {
                 _isAccountVerifying.value = false
                 val message = e.localizedMessage?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
