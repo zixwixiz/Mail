@@ -349,7 +349,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun translateCurrentEmail(target: TargetLanguage) {
         _targetLanguage.value = target
         val email = _selectedEmail.value ?: return
-        val result = TranslationService.translateGermanAcademicText(email.bodyText, target)
+        val result = TranslationService.translateGermanAcademicTextOnline(email.bodyText, target)
         _currentTranslation.value = result
         showFeedback("Translated to ${target.displayName}")
     }
@@ -453,7 +453,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Calendar
-    fun createCalendarEvent(title: String, location: String, startEpochMs: Long, endEpochMs: Long) {
+    fun createCalendarEvent(title: String, location: String, startEpochMs: Long, endEpochMs: Long, timeZone: String = TimezoneEngine.JLU_CAMPUS_ZONE) {
         if (!_activeMailbox.value.isConfigured) {
             showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
             return
@@ -467,7 +467,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 description = "Created in JLU Mobile",
                 startInstant = startEpochMs,
                 endInstant = endEpochMs,
-                timeZone = TimezoneEngine.JLU_CAMPUS_ZONE,
+                timeZone = timeZone,
                 location = location,
                 attendees = _activeMailbox.value.emailAddress,
                 rsvpStatus = "ACCEPTED"
