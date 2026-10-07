@@ -190,7 +190,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // Saved verification from DB
-    val savedVerification: StateFlow<EndpointVerificationEntity?> = repository.getSavedVerification()
+    val savedVerification: StateFlow<EndpointVerificationEntity?> = _activeMailbox
+        .flatMapLatest { repository.getSavedVerification(it.id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // Active Verification Summary State
@@ -260,7 +261,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             showFeedback("No mailbox is connected.", isError = true)
             return
         }
-        repository.disconnectMailbox(mailboxId)
+        viewModelScope.launch { repository.disconnectMailbox(mailboxId) }
         _activeMailbox.value = MailboxAccount.UNCONFIGURED
         _selectedFolder.value = "INBOX"
         _selectedEmail.value = null
@@ -366,7 +367,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _verificationSummary.value = summary
                 if (!summary.isVerifying) {
                     if (summary.allGatesPassed) {
-                        repository.saveVerificationResult(summary)
+                        repository.saveVerificationResult(summary, _activeMailbox.value.id)
                         val mechanism = summary.verifiedMechanism?.displayName ?: summary.detectedMechanisms.joinToString { it.displayName }.ifBlank { "detected mechanisms" }
                         showFeedback("Gate 1, 2, and 3 Verified! Identified Mechanism: $mechanism")
                     } else if (summary.failureReason != null) {
