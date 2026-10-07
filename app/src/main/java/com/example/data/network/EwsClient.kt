@@ -492,7 +492,7 @@ class EwsClient(
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "XML parsing of EWS response failed: undefined")
+            Log.w(TAG, "XML parsing of EWS response failed")
         }
 
         return messages
