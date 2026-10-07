@@ -25,6 +25,7 @@ class EwsFullMessageClient(private val http: ExchangeHttpClient = ExchangeHttpCl
                     <t:FieldURI FieldURI="message:IsRead"/>
                     <t:FieldURI FieldURI="item:HasAttachments"/>
                     <t:FieldURI FieldURI="item:Body"/>
+                    <t:FieldURI FieldURI="item:Attachments"/>
                   </t:AdditionalProperties>
                 </m:ItemShape>
                 <m:ItemIds>ITEM_IDS</m:ItemIds>
