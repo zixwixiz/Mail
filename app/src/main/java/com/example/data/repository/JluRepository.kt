@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class JluRepository(
     private val database: AppDatabase,
@@ -30,7 +31,7 @@ class JluRepository(
     val ewsClient: EwsClient = EwsClient()
 ) {
     private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
-    private val sessionPasswords = mutableMapOf<String, String>()
+    private val sessionPasswords = ConcurrentHashMap<String, String>()
     val availableMailboxes: StateFlow<List<MailboxAccount>> = _availableMailboxes.asStateFlow()
 
     suspend fun verifyAndAddAccount(
@@ -90,6 +91,11 @@ class JluRepository(
 
     suspend fun deleteMessage(messageId: String) =
         database.mailDao().moveToTrash(messageId)
+
+    fun disconnectMailbox(mailboxId: String) {
+        sessionPasswords.remove(mailboxId)
+        _availableMailboxes.value = _availableMailboxes.value.filterNot { it.id == mailboxId }
+    }
 
     suspend fun sendOrDraftMail(
         mailboxId: String,
