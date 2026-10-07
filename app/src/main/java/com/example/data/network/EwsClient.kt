@@ -80,9 +80,14 @@ class EwsClient(
         val disposition = if (isDraft) "SaveOnly" else "SendAndSaveCopy"
         val folderId = if (isDraft) "drafts" else "sentitems"
 
+        require(username.isNotBlank() && password.isNotBlank()) { "Username and password are required." }
+        require(senderEmail.isNotBlank()) { "Sender email is required." }
+        require(recipients.isNotEmpty()) { "At least one recipient is required." }
+
         val soapRequest = buildCreateItemSoapEnvelope(
             disposition = disposition,
             folderId = folderId,
+            senderEmail = senderEmail,
             subject = subject,
             bodyHtml = bodyHtml,
             recipients = recipients
