@@ -86,7 +86,8 @@ class EwsProtocolVerifier(
             return@flow
         }
 
-        val primaryMechanism = gate2Result.mechanisms.firstOrNull { it == EwsAuthMechanism.BASIC }
+        val primaryMechanism = gate2Result.mechanisms.firstOrNull { it == EwsAuthMechanism.NTLM }
+            ?: gate2Result.mechanisms.firstOrNull { it == EwsAuthMechanism.NEGOTIATE }
             ?: gate2Result.mechanisms.first()
 
         summary = summary.copy(
@@ -279,37 +280,33 @@ class EwsProtocolVerifier(
         """.trimIndent()
 
         try {
-            val request = Request.Builder()
-                .url(ewsUrl)
-                .post(soapPayload.toRequestBody("text/xml; charset=utf-8".toMediaType()))
-                .header("Content-Type", "text/xml; charset=utf-8")
-                .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder")
-                .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS SOAP Verification)")
-                .header("Authorization", okhttp3.Credentials.basic(username!!, password!!))
-                .header("X-AnchorMailbox", mailboxEmail!!)
-                .build()
-
-            okHttpClient.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                val responseCode = parseResponseCode(body)
-                val passed = response.code in 200..299 && responseCode == "NoError"
-                val detail = when {
-                    passed -> "Authenticated EWS SOAP GetFolder completed successfully (HTTP ${response.code})."
-                    response.code == 401 -> "Authenticated EWS SOAP request was rejected with HTTP 401."
-                    responseCode.isNotBlank() -> "EWS SOAP returned ${responseCode} (HTTP ${response.code})."
-                    else -> "EWS SOAP endpoint returned HTTP ${response.code}."
-                }
-
-                GateStepResult(
-                    gateNumber = 3,
-                    title = "Gate 3 — EWS SOAP Endpoint Probe",
-                    description = "Authenticated GetFolder SOAP request",
-                    status = if (passed) GateStatus.PASSED else GateStatus.FAILED,
-                    details = detail,
-                    latencyMs = System.currentTimeMillis() - startedAt,
-                    rawData = "HTTP " + response.code + " SOAP response received; message content omitted from diagnostics."
-                )
+            val response = exchangeHttpClient.postSoap(
+                endpointUrl = ewsUrl,
+                username = username!!,
+                password = password!!,
+                soapAction = "http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder",
+                soapXml = soapPayload,
+                anchorMailbox = mailboxEmail!!
+            )
+            val responseBody = response.body
+            val responseCode = parseResponseCode(responseBody)
+            val passed = response.statusCode in 200..299 && responseCode == "NoError"
+            val detail = when {
+                passed -> "Authenticated Exchange EWS SOAP GetFolder completed successfully (HTTP \${response.statusCode})."
+                response.statusCode == 401 -> "Exchange rejected the credentials with HTTP 401."
+                responseCode.isNotBlank() -> "EWS SOAP returned \${responseCode} (HTTP \${response.statusCode})."
+                else -> "Exchange EWS endpoint returned HTTP \${response.statusCode}."
             }
+
+            GateStepResult(
+                gateNumber = 3,
+                title = "Gate 3 — EWS SOAP Endpoint Probe",
+                description = "Authenticated GetFolder SOAP request using Exchange NTLM",
+                status = if (passed) GateStatus.PASSED else GateStatus.FAILED,
+                details = detail,
+                latencyMs = System.currentTimeMillis() - startedAt,
+                rawData = "HTTP " + response.statusCode + " SOAP response received; message content omitted from diagnostics."
+            )
         } catch (e: Exception) {
             GateStepResult(
                 gateNumber = 3,
