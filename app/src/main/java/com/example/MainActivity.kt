@@ -481,6 +481,10 @@ fun JluMobileApp(viewModel: MainViewModel) {
                 onAddAccountClick = {
                     isSettingsOpen = false
                     viewModel.setAddAccountOpen(true)
+                },
+                onDisconnectAccount = {
+                    viewModel.disconnectActiveMailbox()
+                    isSettingsOpen = false
                 }
             )
         }
