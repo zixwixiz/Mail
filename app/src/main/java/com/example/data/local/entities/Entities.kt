@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 data class MailMessageEntity(
     @PrimaryKey val id: String,
     val mailboxId: String,
-    val folder: String, // INBOX, SENT, DRAFTS, TRASH, ARCHIVE
+    val folder: String, // INBOX, SENT, DRAFTS, TRASH
     val threadId: String,
     val subject: String,
     val senderName: String,
@@ -61,10 +61,10 @@ data class ContactEntity(
     val displayName: String,
     val email: String,
     val phone: String,
-    val organization: String = "Justus-Liebig-Universität Gießen",
+    val organization: String = "",
     val department: String,
     val officeRoom: String = "",
-    val isJluDirectory: Boolean = true
+    val isJluDirectory: Boolean = false
 )
 
 @Entity(tableName = "notes")
