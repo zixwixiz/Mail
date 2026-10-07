@@ -215,11 +215,11 @@ class JluRepository(
     suspend fun saveNote(note: NoteEntity) = database.noteDao().insert(note)
     suspend fun deleteNote(noteId: String) = database.noteDao().delete(noteId)
 
-    fun searchMail(query: String) = database.mailDao().searchMessages(query)
-    fun searchCalendar(query: String) = database.calendarDao().searchEvents(query)
-    fun searchTasks(query: String) = database.taskDao().searchTasks(query)
-    fun searchContacts(query: String) = database.contactDao().searchContacts(query)
-    fun searchNotes(query: String) = database.noteDao().searchNotes(query)
+    fun searchMail(mailboxId: String, query: String) = database.mailDao().searchMessages(mailboxId, query)
+    fun searchCalendar(mailboxId: String, query: String) = database.calendarDao().searchEvents(mailboxId, query)
+    fun searchTasks(mailboxId: String, query: String) = database.taskDao().searchTasks(mailboxId, query)
+    fun searchContacts(mailboxId: String, query: String) = database.contactDao().searchContacts(mailboxId, query)
+    fun searchNotes(mailboxId: String, query: String) = database.noteDao().searchNotes(mailboxId, query)
 
     fun getSavedVerification(): Flow<EndpointVerificationEntity?> =
         database.verificationDao().getVerification()
