@@ -108,14 +108,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     endpointUrl = endpointUrl,
                     password = password
                 )
+                if (!result.isSuccess) {
+                    _accountVerificationResult.value = result
+                    _isAccountVerifying.value = false
+                    showFeedback(result.errorMessage ?: "Exchange login failed.", isError = true)
+                    return@launch
+                }
                 _accountVerificationResult.value = result
                 _activeMailbox.value = newAccount
                 _isAccountVerifying.value = false
                 _isAddAccountOpen.value = false
                 showFeedback("EWS endpoint verified (${result.selectedMechanism.displayName}); account added for this session.")
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _isAccountVerifying.value = false
-                showFeedback("Failed to add account: ${e.localizedMessage}", isError = true)
+                val message = e.localizedMessage?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                _accountVerificationResult.value = com.example.data.network.AuthVerificationResult(
+                    isSuccess = false,
+                    endpointUrl = endpointUrl,
+                    httpStatusCode = 0,
+                    rawWwwAuthenticateHeaders = emptyList(),
+                    supportedMechanisms = listOf(com.example.data.model.EwsAuthMechanism.NTLM),
+                    selectedMechanism = com.example.data.model.EwsAuthMechanism.NTLM,
+                    latencyMs = 0L,
+                    diagnosticLogs = listOf("Exchange login error: $message"),
+                    errorMessage = "Exchange login failed: $message"
+                )
+                showFeedback("Exchange login failed: $message", isError = true)
             }
         }
     }
