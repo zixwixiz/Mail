@@ -31,13 +31,13 @@ class AuthVerificationService(
         endpointUrl: String = DEFAULT_JLU_EWS_ENDPOINT,
         username: String,
         password: String,
-        mailboxEmail: String
+        mailboxEmail: String = ""
     ): AuthVerificationResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
-        val endpointError = EwsEndpointPolicy.validate(endpointUrl, mailboxEmail)
+        val endpointError = EwsEndpointPolicy.validate(endpointUrl, null)
         if (endpointError != null) return@withContext failure(endpointUrl, startedAt, endpointError)
-        if (username.isBlank() || password.isBlank() || mailboxEmail.isBlank()) {
-            return@withContext failure(endpointUrl, startedAt, "Kennung, password, and mailbox address are required.")
+        if (username.isBlank() || password.isBlank()) {
+            return@withContext failure(endpointUrl, startedAt, "Kennung and password are required.")
         }
 
         val soap = """
@@ -51,7 +51,7 @@ class AuthVerificationService(
                   <m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>
                   <m:FolderIds>
                     <t:DistinguishedFolderId Id="inbox">
-                      <t:Mailbox><t:EmailAddress>${escapeXml(mailboxEmail.trim())}</t:EmailAddress></t:Mailbox>
+                      
                     </t:DistinguishedFolderId>
                   </m:FolderIds>
                 </m:GetFolder>
@@ -66,7 +66,7 @@ class AuthVerificationService(
                 password = password,
                 soapAction = "http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder",
                 soapXml = soap,
-                anchorMailbox = mailboxEmail.trim()
+                anchorMailbox = ""
             )
             val latency = System.currentTimeMillis() - startedAt
             val responseCode = parseResponseCode(response.body)
@@ -88,7 +88,7 @@ class AuthVerificationService(
                 latencyMs = latency,
                 diagnosticLogs = listOf(
                     "JLU Exchange endpoint verified over HTTPS.",
-                    "Authentication: NTLM challenge-response (domain: ad).",
+                    "Authentication: NTLM challenge-response using the JLU ad domain.",
                     "EWS GetFolder(Inbox): " + if (success) "NoError" else responseCode.ifBlank { "HTTP_${response.statusCode}" }
                 ),
                 errorMessage = if (success) null else message
