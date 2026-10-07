@@ -18,7 +18,6 @@ import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
 import com.example.data.local.entities.NoteEntity
-import com.example.data.local.entities.SyncQueueEntity
 import com.example.data.local.entities.TaskEntity
 
 @Database(
