@@ -61,7 +61,7 @@ data class GateStepResult(
 
 data class ProtocolVerificationSummary(
     val targetHost: String = "exchange.uni-giessen.de",
-    val ewsEndpoint: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
+    val ewsEndpoint: String = "https://exchange.uni-giessen.de/EWS/Exchange.asmx",
     val exchangeVersion: String = "Not verified",
     val isVerifying: Boolean = false,
     val gate1: GateStepResult = GateStepResult(
