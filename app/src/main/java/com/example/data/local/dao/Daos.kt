@@ -10,7 +10,6 @@ import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
 import com.example.data.local.entities.NoteEntity
-import com.example.data.local.entities.SyncQueueEntity
 import com.example.data.local.entities.TaskEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -129,19 +128,4 @@ interface VerificationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveVerification(entity: EndpointVerificationEntity)
-}
-
-@Dao
-interface SyncDao {
-    @Query("SELECT * FROM sync_queue WHERE status = 'PENDING' ORDER BY timestamp ASC")
-    fun getPendingOperations(): Flow<List<SyncQueueEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun queueOperation(op: SyncQueueEntity)
-
-    @Query("DELETE FROM sync_queue WHERE id = :id")
-    suspend fun markComplete(id: Long)
-
-    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'PENDING'")
-    fun getPendingCount(): Flow<Int>
 }
