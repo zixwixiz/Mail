@@ -270,15 +270,16 @@ fun AddAccountDialog(
                         )
 
                         FilterChip(
-                            selected = isSharedMailbox,
-                            onClick = {
+                            selected = false,
+                            onClick = { },
                                 isSharedMailbox = true
                                 selectedPermission = MailboxPermission.EDITOR
                             },
-                            label = { Text("Shared Mailbox") },
+                            label = { Text("Shared Mailbox (OWA only)") },
                             leadingIcon = {
                                 Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(16.dp))
                             },
+                            enabled = false,
                             modifier = Modifier.weight(1f)
                         )
                     }
