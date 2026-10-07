@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.MailboxCredentialStore
 import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
@@ -64,7 +65,7 @@ data class UniversalSearchResults(
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getInstance(application)
-    private val repository = JluRepository(database)
+    private val repository = JluRepository(database, credentialStore = MailboxCredentialStore(application.applicationContext))
 
     val availableMailboxes: StateFlow<List<MailboxAccount>> = repository.availableMailboxes
 
