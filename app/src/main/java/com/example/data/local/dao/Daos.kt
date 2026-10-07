@@ -123,8 +123,8 @@ interface NoteDao {
 
 @Dao
 interface VerificationDao {
-    @Query("SELECT * FROM endpoint_verification WHERE id = 1")
-    fun getVerification(): Flow<EndpointVerificationEntity?>
+    @Query("SELECT * FROM endpoint_verification WHERE mailboxId = :mailboxId LIMIT 1")
+    fun getVerification(mailboxId: String): Flow<EndpointVerificationEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveVerification(entity: EndpointVerificationEntity)
