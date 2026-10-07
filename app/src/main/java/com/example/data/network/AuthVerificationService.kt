@@ -54,8 +54,7 @@ class AuthVerificationService(
     }
 
     suspend fun verifyEndpointAuth(
-        endpointUrl: String = DEFAULT_JLU_EWS_ENDPOINT,
-        userAccountIdentifier: String? = null
+        endpointUrl: String = DEFAULT_JLU_EWS_ENDPOINT
     ): AuthVerificationResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         val logs = mutableListOf<String>()
