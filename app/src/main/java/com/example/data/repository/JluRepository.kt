@@ -152,7 +152,8 @@ class JluRepository(
             password = sessionPasswords[mailbox.id]
                 ?: error("Mailbox credentials are no longer available; reconnect the account."),
             distinguishedFolderId = folder,
-            mailboxId = mailboxId
+            mailboxId = mailboxId,
+            mailboxEmail = mailbox.emailAddress
         )
         if (result.isSuccess && result.messages.isNotEmpty()) {
             database.mailDao().insertAll(result.messages)
