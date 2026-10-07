@@ -110,7 +110,7 @@ fun CalendarScreen(
 
             item {
                 Text(
-                    text = "Upcoming Campus Appointments & Colloquia",
+                    text = "Calendar",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
