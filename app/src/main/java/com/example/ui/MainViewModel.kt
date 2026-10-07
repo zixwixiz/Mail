@@ -344,7 +344,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Protocol Verification Execution
     fun startProtocolVerification(host: String = "owa.uni-giessen.de", ewsUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx") {
         viewModelScope.launch {
-            repository.runProtocolVerificationFlow(host, ewsUrl).collect { summary ->
+            repository.runProtocolVerificationFlow(host, ewsUrl, _activeMailbox.value.id).collect { summary ->
                 _verificationSummary.value = summary
                 if (!summary.isVerifying) {
                     if (summary.allGatesPassed) {
