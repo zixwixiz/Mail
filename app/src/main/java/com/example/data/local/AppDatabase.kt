@@ -28,7 +28,7 @@ import com.example.data.local.entities.TaskEntity
         NoteEntity::class,
         EndpointVerificationEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,6 +40,29 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun verificationDao(): VerificationDao
 
     companion object {
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS endpoint_verification")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS endpoint_verification (
+                        mailboxId TEXT NOT NULL,
+                        host TEXT NOT NULL,
+                        ewsUrl TEXT NOT NULL,
+                        gate1Passed INTEGER NOT NULL,
+                        gate2Passed INTEGER NOT NULL,
+                        gate3Passed INTEGER NOT NULL,
+                        verifiedMechanism TEXT NOT NULL,
+                        challengeHeaders TEXT NOT NULL,
+                        lastVerifiedTimestamp INTEGER NOT NULL,
+                        latencyMs INTEGER NOT NULL,
+                        PRIMARY KEY(mailboxId)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS sync_queue")
@@ -62,7 +85,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "jlu_mobile.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
