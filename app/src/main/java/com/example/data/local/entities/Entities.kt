@@ -19,6 +19,7 @@ data class MailMessageEntity(
     val isRead: Boolean,
     val isFlagged: Boolean,
     val hasAttachments: Boolean,
+    val attachments: String = "", // newline-separated attachment names/sizes
     val category: String = "Normal"
 )
 
