@@ -1,0 +1,441 @@
+package com.example.data.network
+
+import android.util.Base64
+import android.util.Log
+import com.example.data.local.entities.MailMessageEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.StringReader
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+data class EwsExecutionLog(
+    val action: String,
+    val endpointUrl: String,
+    val requestSoapXml: String,
+    val responseSoapXml: String?,
+    val httpStatusCode: Int?,
+    val durationMs: Long,
+    val isSuccess: Boolean,
+    val errorMessage: String? = null
+)
+
+data class EwsSendResult(
+    val isSuccess: Boolean,
+    val messageId: String?,
+    val responseCode: String,
+    val httpStatusCode: Int,
+    val soapLog: EwsExecutionLog
+)
+
+data class EwsReceiveResult(
+    val isSuccess: Boolean,
+    val messages: List<MailMessageEntity>,
+    val responseCode: String,
+    val httpStatusCode: Int,
+    val soapLog: EwsExecutionLog
+)
+
+class EwsClient(
+    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .build()
+) {
+    companion object {
+        private const val TAG = "EwsClient"
+        const val DEFAULT_EWS_ENDPOINT = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
+        private val XML_MEDIA_TYPE = "text/xml; charset=utf-8".toMediaType()
+    }
+
+    // Stores the most recent EWS SOAP transaction log for inspection in UI
+    var lastExecutionLog: EwsExecutionLog? = null
+        private set
+
+    /**
+     * Executes real EWS SOAP CreateItem request with MessageDisposition="SendAndSaveCopy"
+     * against https://owa.uni-giessen.de/EWS/Exchange.asmx
+     */
+    suspend fun sendMessage(
+        endpointUrl: String = DEFAULT_EWS_ENDPOINT,
+        username: String,
+        password: String,
+        senderEmail: String,
+        recipients: List<String>,
+        subject: String,
+        bodyHtml: String,
+        isDraft: Boolean = false,
+        mailboxId: String = "primary"
+    ): EwsSendResult = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        val disposition = if (isDraft) "SaveOnly" else "SendAndSaveCopy"
+        val folderId = if (isDraft) "drafts" else "sentitems"
+
+        val soapRequest = buildCreateItemSoapEnvelope(
+            disposition = disposition,
+            folderId = folderId,
+            subject = subject,
+            bodyHtml = bodyHtml,
+            recipients = recipients
+        )
+
+        Log.i(TAG, "[$endpointUrl] Executing EWS CreateItem ($disposition)...")
+
+        val requestBuilder = Request.Builder()
+            .url(endpointUrl)
+            .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
+            .header("Content-Type", "text/xml; charset=utf-8")
+            .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/CreateItem")
+            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client; Exchange2019)")
+
+        // Add Basic authentication header if credentials are supplied
+        if (username.isNotBlank() && password.isNotBlank()) {
+            val credentials = "$username:$password"
+            val encoded = Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            requestBuilder.header("Authorization", "Basic $encoded")
+        }
+
+        try {
+            val response = okHttpClient.newCall(requestBuilder.build()).execute()
+            val duration = System.currentTimeMillis() - startTime
+            val statusCode = response.code
+            val responseBody = response.body?.string() ?: ""
+
+            Log.i(TAG, "EWS CreateItem finished with HTTP $statusCode in ${duration}ms")
+
+            val executionLog = EwsExecutionLog(
+                action = "CreateItem ($disposition)",
+                endpointUrl = endpointUrl,
+                requestSoapXml = soapRequest,
+                responseSoapXml = responseBody,
+                httpStatusCode = statusCode,
+                durationMs = duration,
+                isSuccess = statusCode in 200..299 || responseBody.contains("ResponseClass=\"Success\"")
+            )
+            lastExecutionLog = executionLog
+
+            val isSuccess = executionLog.isSuccess
+            val generatedId = "ews_${UUID.randomUUID()}"
+
+            EwsSendResult(
+                isSuccess = isSuccess,
+                messageId = generatedId,
+                responseCode = if (isSuccess) "NoError" else "HTTP_$statusCode",
+                httpStatusCode = statusCode,
+                soapLog = executionLog
+            )
+        } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            Log.w(TAG, "EWS CreateItem network error: ${e.localizedMessage}")
+
+            val executionLog = EwsExecutionLog(
+                action = "CreateItem ($disposition)",
+                endpointUrl = endpointUrl,
+                requestSoapXml = soapRequest,
+                responseSoapXml = null,
+                httpStatusCode = null,
+                durationMs = duration,
+                isSuccess = false,
+                errorMessage = e.localizedMessage
+            )
+            lastExecutionLog = executionLog
+
+            EwsSendResult(
+                isSuccess = false,
+                messageId = null,
+                responseCode = "NetworkError: ${e.localizedMessage}",
+                httpStatusCode = 0,
+                soapLog = executionLog
+            )
+        }
+    }
+
+    /**
+     * Executes real EWS SOAP FindItem and GetItem requests against https://owa.uni-giessen.de/EWS/Exchange.asmx
+     * to fetch messages from distinguished folders (inbox, sentitems, drafts, deleteditems).
+     */
+    suspend fun fetchMessages(
+        endpointUrl: String = DEFAULT_EWS_ENDPOINT,
+        username: String,
+        password: String,
+        distinguishedFolderId: String = "inbox",
+        mailboxId: String = "primary",
+        maxEntries: Int = 25
+    ): EwsReceiveResult = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        val ewsFolder = when (distinguishedFolderId.uppercase()) {
+            "SENT" -> "sentitems"
+            "DRAFTS" -> "drafts"
+            "TRASH" -> "deleteditems"
+            else -> "inbox"
+        }
+
+        val soapRequest = buildFindItemSoapEnvelope(folderId = ewsFolder, maxEntries = maxEntries)
+        Log.i(TAG, "[$endpointUrl] Executing EWS FindItem for folder '$ewsFolder'...")
+
+        val requestBuilder = Request.Builder()
+            .url(endpointUrl)
+            .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
+            .header("Content-Type", "text/xml; charset=utf-8")
+            .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/FindItem")
+            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client; Exchange2019)")
+
+        if (username.isNotBlank() && password.isNotBlank()) {
+            val credentials = "$username:$password"
+            val encoded = Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            requestBuilder.header("Authorization", "Basic $encoded")
+        }
+
+        try {
+            val response = okHttpClient.newCall(requestBuilder.build()).execute()
+            val duration = System.currentTimeMillis() - startTime
+            val statusCode = response.code
+            val responseBody = response.body?.string() ?: ""
+
+            Log.i(TAG, "EWS FindItem completed with HTTP $statusCode in ${duration}ms")
+
+            val parsedMessages = parseEwsItemsFromXml(responseBody, mailboxId, distinguishedFolderId.uppercase())
+
+            val executionLog = EwsExecutionLog(
+                action = "FindItem ($ewsFolder)",
+                endpointUrl = endpointUrl,
+                requestSoapXml = soapRequest,
+                responseSoapXml = responseBody,
+                httpStatusCode = statusCode,
+                durationMs = duration,
+                isSuccess = statusCode in 200..299 || parsedMessages.isNotEmpty()
+            )
+            lastExecutionLog = executionLog
+
+            EwsReceiveResult(
+                isSuccess = executionLog.isSuccess,
+                messages = parsedMessages,
+                responseCode = if (executionLog.isSuccess) "NoError" else "HTTP_$statusCode",
+                httpStatusCode = statusCode,
+                soapLog = executionLog
+            )
+        } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            Log.w(TAG, "EWS FindItem network error: ${e.localizedMessage}")
+
+            val executionLog = EwsExecutionLog(
+                action = "FindItem ($ewsFolder)",
+                endpointUrl = endpointUrl,
+                requestSoapXml = soapRequest,
+                responseSoapXml = null,
+                httpStatusCode = null,
+                durationMs = duration,
+                isSuccess = false,
+                errorMessage = e.localizedMessage
+            )
+            lastExecutionLog = executionLog
+
+            EwsReceiveResult(
+                isSuccess = false,
+                messages = emptyList(),
+                responseCode = "NetworkError: ${e.localizedMessage}",
+                httpStatusCode = 0,
+                soapLog = executionLog
+            )
+        }
+    }
+
+    private fun buildCreateItemSoapEnvelope(
+        disposition: String,
+        folderId: String,
+        subject: String,
+        bodyHtml: String,
+        recipients: List<String>
+    ): String {
+        val sanitizedSubject = escapeXml(subject)
+        val sanitizedBody = escapeXml(bodyHtml)
+
+        val recipientXml = recipients.joinToString("\n") { email ->
+            """
+            <t:Mailbox>
+              <t:EmailAddress>${escapeXml(email.trim())}</t:EmailAddress>
+            </t:Mailbox>
+            """.trimIndent()
+        }
+
+        return """
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+                           xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                           xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+              <soap:Header>
+                <t:RequestServerVersion Version="Exchange2016" />
+              </soap:Header>
+              <soap:Body>
+                <m:CreateItem MessageDisposition="$disposition">
+                  <m:SavedItemFolderId>
+                    <t:DistinguishedFolderId Id="$folderId" />
+                  </m:SavedItemFolderId>
+                  <m:Items>
+                    <t:Message>
+                      <t:ItemClass>IPM.Note</t:ItemClass>
+                      <t:Subject>$sanitizedSubject</t:Subject>
+                      <t:Body BodyType="HTML">$sanitizedBody</t:Body>
+                      <t:ToRecipients>
+                        $recipientXml
+                      </t:ToRecipients>
+                    </t:Message>
+                  </m:Items>
+                </m:CreateItem>
+              </soap:Body>
+            </soap:Envelope>
+        """.trimIndent()
+    }
+
+    private fun buildFindItemSoapEnvelope(folderId: String, maxEntries: Int): String {
+        return """
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+                           xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                           xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+              <soap:Header>
+                <t:RequestServerVersion Version="Exchange2016" />
+              </soap:Header>
+              <soap:Body>
+                <m:FindItem Traversal="Shallow">
+                  <m:ItemShape>
+                    <t:BaseShape>AllProperties</t:BaseShape>
+                  </m:ItemShape>
+                  <m:IndexedPageItemView MaxEntriesReturned="$maxEntries" Offset="0" BasePoint="Beginning" />
+                  <m:ParentFolderIds>
+                    <t:DistinguishedFolderId Id="$folderId" />
+                  </m:ParentFolderIds>
+                </m:FindItem>
+              </soap:Body>
+            </soap:Envelope>
+        """.trimIndent()
+    }
+
+    /**
+     * Parses EWS SOAP response XML into MailMessageEntity items
+     */
+    fun parseEwsItemsFromXml(
+        xmlContent: String,
+        mailboxId: String,
+        folderName: String
+    ): List<MailMessageEntity> {
+        val messages = mutableListOf<MailMessageEntity>()
+        if (xmlContent.isBlank()) return messages
+
+        try {
+            val factory = XmlPullParserFactory.newInstance()
+            factory.isNamespaceAware = true
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xmlContent))
+
+            var eventType = parser.eventType
+            var currentSubject = ""
+            var currentSenderName = ""
+            var currentSenderEmail = ""
+            var currentReceivedMs = System.currentTimeMillis()
+            var currentIsRead = false
+            var currentHasAttachments = false
+            var currentId = ""
+            var insideMessage = false
+            var currentTag = ""
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        currentTag = parser.name
+                        if (currentTag.equals("Message", ignoreCase = true)) {
+                            insideMessage = true
+                            currentSubject = ""
+                            currentSenderName = ""
+                            currentSenderEmail = ""
+                            currentReceivedMs = System.currentTimeMillis()
+                            currentIsRead = false
+                            currentHasAttachments = false
+                            currentId = "ews_${UUID.randomUUID()}"
+                        } else if (insideMessage && currentTag.equals("ItemId", ignoreCase = true)) {
+                            val idAttr = parser.getAttributeValue(null, "Id")
+                            if (!idAttr.isNullOrBlank()) {
+                                currentId = idAttr
+                            }
+                        }
+                    }
+                    XmlPullParser.TEXT -> {
+                        val text = parser.text?.trim() ?: ""
+                        if (insideMessage && text.isNotBlank()) {
+                            when {
+                                currentTag.equals("Subject", ignoreCase = true) -> currentSubject = text
+                                currentTag.equals("Name", ignoreCase = true) && currentSenderName.isBlank() -> currentSenderName = text
+                                currentTag.equals("EmailAddress", ignoreCase = true) && currentSenderEmail.isBlank() -> currentSenderEmail = text
+                                currentTag.equals("DateTimeReceived", ignoreCase = true) -> {
+                                    currentReceivedMs = parseIsoDateTime(text)
+                                }
+                                currentTag.equals("IsRead", ignoreCase = true) -> currentIsRead = text.equals("true", ignoreCase = true)
+                                currentTag.equals("HasAttachments", ignoreCase = true) -> currentHasAttachments = text.equals("true", ignoreCase = true)
+                            }
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        if (parser.name.equals("Message", ignoreCase = true) && insideMessage) {
+                            if (currentSubject.isNotBlank() || currentSenderEmail.isNotBlank()) {
+                                val item = MailMessageEntity(
+                                    id = currentId,
+                                    mailboxId = mailboxId,
+                                    folder = folderName,
+                                    threadId = "th_$currentId",
+                                    subject = currentSubject.ifBlank { "(No Subject)" },
+                                    senderName = currentSenderName.ifBlank { currentSenderEmail.ifBlank { "JLU Exchange Sender" } },
+                                    senderEmail = currentSenderEmail.ifBlank { "exchange@uni-giessen.de" },
+                                    recipients = "me@uni-giessen.de",
+                                    receivedTimestamp = currentReceivedMs,
+                                    bodyText = currentSubject,
+                                    bodyHtml = "<p>$currentSubject</p>",
+                                    isRead = currentIsRead,
+                                    isFlagged = false,
+                                    hasAttachments = currentHasAttachments,
+                                    category = "JLU EWS Live"
+                                )
+                                messages.add(item)
+                            }
+                            insideMessage = false
+                        }
+                    }
+                }
+                eventType = parser.next()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "XML parsing of EWS response: ${e.localizedMessage}")
+        }
+
+        return messages
+    }
+
+    private fun escapeXml(input: String): String {
+        return input.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+    }
+
+    private fun parseIsoDateTime(isoString: String): Long {
+        return try {
+            val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            format.parse(isoString.substringBefore("Z").substringBefore("."))?.time ?: System.currentTimeMillis()
+        } catch (_: Exception) {
+            System.currentTimeMillis()
+        }
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix JLU Mobile",
+  "description": "An open-source, modular Android productivity suite featuring integrated mail, calendar, and task management with offline-first synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
