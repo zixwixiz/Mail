@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -33,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -51,10 +48,6 @@ import com.example.ui.theme.JluSuccess
 @Composable
 fun SettingsScreen(
     activeMailbox: MailboxAccount,
-    isBiometricLockEnabled: Boolean,
-    onToggleBiometricLock: (Boolean) -> Unit,
-    pendingSyncCount: Int,
-    onFlushSyncQueue: () -> Unit,
     onExportDiagnostics: () -> Unit,
     onAddAccountClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -119,13 +112,11 @@ fun SettingsScreen(
             }
         }
 
-        // Privacy Guarantee Card
+        // Local Security Card
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = JluNavy
-                ),
+                colors = CardDefaults.cardColors(containerColor = JluNavy),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -137,18 +128,18 @@ fun SettingsScreen(
                                 .background(JluGold.copy(alpha = 0.2f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = JluGold, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Security, contentDescription = null, tint = JluGold, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Zero-Credential-Logging Guarantee",
+                                text = "Local security",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                text = "JLU HRZ Data Protection Compliant",
+                                text = "Backup disabled for mailbox data",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = JluGold
                             )
@@ -157,7 +148,7 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Your university credentials (s-kennung / password) and mailbox contents are stored exclusively in encrypted Android Keystore storage and never transmitted to third-party cloud analytics or unauthenticated relays.",
+                        text = "Credentials are kept in the active app session. The local Room database is excluded from Android cloud backup and device transfer.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.85f)
                     )
@@ -165,94 +156,7 @@ fun SettingsScreen(
             }
         }
 
-        // Security Toggles
-        item {
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "App Security",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Biometric Lock",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Require fingerprint / face unlock to open client",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Switch(
-                            checked = isBiometricLockEnabled,
-                            onCheckedChange = onToggleBiometricLock,
-                            modifier = Modifier.testTag("biometric_lock_switch")
-                        )
-                    }
-                }
-            }
-        }
-
-        // Offline Database & Sync Queue Status
-        item {
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "Offline Storage & Sync Engine",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CloudDone, contentDescription = null, tint = JluSuccess)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Pending Operations: $pendingSyncCount",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-
-                        Button(
-                            onClick = onFlushSyncQueue,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.testTag("flush_sync_button")
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Flush Queue")
-                        }
-                    }
-                }
-            }
-        }
-
-        // JLU Configuration 1 Specification Card
+                // JLU Configuration 1 Specification Card
         item {
             Card(
                 shape = RoundedCornerShape(12.dp),
