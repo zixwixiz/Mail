@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.TimeZone
@@ -60,6 +61,7 @@ data class UniversalSearchResults(
         get() = mail.size + events.size + tasks.size + contacts.size + notes.size
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getInstance(application)
     private val repository = JluRepository(database)
@@ -507,12 +509,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _searchResults.value = UniversalSearchResults()
             return
         }
+        val mailboxId = _activeMailbox.value.id
+        if (mailboxId.isBlank()) {
+            _searchResults.value = UniversalSearchResults(query = query)
+            return
+        }
         viewModelScope.launch {
-            val mail = repository.searchMail(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
-            val events = repository.searchCalendar(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
-            val tasks = repository.searchTasks(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
-            val contacts = repository.searchContacts(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
-            val notes = repository.searchNotes(_activeMailbox.value.id, query).firstOrNull() ?: emptyList()
+            val mail = repository.searchMail(mailboxId, query).firstOrNull() ?: emptyList()
+            val events = repository.searchCalendar(mailboxId, query).firstOrNull() ?: emptyList()
+            val tasks = repository.searchTasks(mailboxId, query).firstOrNull() ?: emptyList()
+            val contacts = repository.searchContacts(mailboxId, query).firstOrNull() ?: emptyList()
+            val notes = repository.searchNotes(mailboxId, query).firstOrNull() ?: emptyList()
+            if (_searchQuery.value != query || _activeMailbox.value.id != mailboxId) return@launch
             _searchResults.value = UniversalSearchResults(
                 query = query,
                 mail = mail,
