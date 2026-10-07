@@ -1,9 +1,5 @@
 {
   "name": "JLU Mobile",
-  "description": "Android mail and productivity client with real Exchange Web Services mail integration and local calendar, task, contact, and note features.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "EWS_MAIL",
-    "LOCAL_PRODUCTIVITY"
-  ]
+  "description": "Android mail client with direct EWS mail integration and local productivity features.",
+  "requestFramePermissions": []
 }
