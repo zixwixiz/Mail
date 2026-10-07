@@ -371,7 +371,7 @@ fun ProtocolVerificationScreen(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Technical security notes"
+                        text = "Technical security notes",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
