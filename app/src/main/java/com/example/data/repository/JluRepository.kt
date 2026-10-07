@@ -43,7 +43,7 @@ class JluRepository(
         endpointUrl: String = AuthVerificationService.DEFAULT_JLU_EWS_ENDPOINT,
         password: String = ""
     ): Pair<MailboxAccount, AuthVerificationResult> {
-        require(accountIdentifier.isNotBlank()) { "Account identifier is required." }
+        val normalizedUsername = EwsEndpointPolicy.normalizeUsername(accountIdentifier)
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
         EwsEndpointPolicy.validate(endpointUrl, emailAddress)?.let { error ->
@@ -55,7 +55,7 @@ class JluRepository(
             verification.errorMessage ?: "EWS endpoint verification failed."
         }
 
-        val accessProbe = ewsClient.fetchMessages(endpointUrl = endpointUrl.trim(), username = accountIdentifier.trim(), password = password, distinguishedFolderId = "INBOX", mailboxId = "verification-probe", mailboxEmail = emailAddress.trim(), maxEntries = 1)
+        val accessProbe = ewsClient.fetchMessages(endpointUrl = endpointUrl.trim(), username = normalizedUsername, password = password, distinguishedFolderId = "INBOX", mailboxId = "verification-probe", mailboxEmail = emailAddress.trim(), maxEntries = 1)
         check(accessProbe.isSuccess) { "Mailbox access verification failed: " + accessProbe.responseCode }
 
         val account = MailboxAccount(
