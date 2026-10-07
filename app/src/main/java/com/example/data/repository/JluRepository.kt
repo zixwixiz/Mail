@@ -95,8 +95,9 @@ class JluRepository(
     suspend fun deleteMessage(messageId: String) =
         database.mailDao().moveToTrash(messageId)
 
-    fun disconnectMailbox(mailboxId: String) {
+    suspend fun disconnectMailbox(mailboxId: String) {
         sessionPasswords.remove(mailboxId)
+        database.verificationDao().deleteVerification(mailboxId)
         _availableMailboxes.value = _availableMailboxes.value.filterNot { it.id == mailboxId }
     }
 
@@ -221,8 +222,8 @@ class JluRepository(
     fun searchContacts(mailboxId: String, query: String) = database.contactDao().searchContacts(mailboxId, query)
     fun searchNotes(mailboxId: String, query: String) = database.noteDao().searchNotes(mailboxId, query)
 
-    fun getSavedVerification(): Flow<EndpointVerificationEntity?> =
-        database.verificationDao().getVerification()
+    fun getSavedVerification(mailboxId: String): Flow<EndpointVerificationEntity?> =
+        database.verificationDao().getVerification(mailboxId)
 
     fun runProtocolVerificationFlow(host: String, ewsUrl: String, mailboxId: String): Flow<ProtocolVerificationSummary> {
         val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId }
@@ -235,10 +236,10 @@ class JluRepository(
         )
     }
 
-    suspend fun saveVerificationResult(summary: ProtocolVerificationSummary) {
+    suspend fun saveVerificationResult(summary: ProtocolVerificationSummary, mailboxId: String) {
         database.verificationDao().saveVerification(
             EndpointVerificationEntity(
-                id = 1,
+                mailboxId = mailboxId,
                 host = summary.targetHost,
                 ewsUrl = summary.ewsEndpoint,
                 gate1Passed = summary.gate1.status.name == "PASSED",
