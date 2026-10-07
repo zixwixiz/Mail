@@ -131,8 +131,8 @@ class EwsClient(
             val executionLog = EwsExecutionLog(
                 action = "CreateItem ($disposition)",
                 endpointUrl = endpointUrl,
-                requestSoapXml = soapRequest,
-                responseSoapXml = responseBody,
+                requestSoapXml = redactSensitiveXml(soapRequest),
+                responseSoapXml = redactSensitiveXml(responseBody),
                 httpStatusCode = statusCode,
                 durationMs = duration,
                 isSuccess = isSuccess,
@@ -548,6 +548,14 @@ class EwsClient(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun redactSensitiveXml(xml: String): String {
+        if (xml.isBlank()) return xml
+        return xml.replace(
+            Regex("""(<(?:\w+:)?Body\b[^>]*>)([\s\S]*?)(</(?:\w+:)?Body>)""", RegexOption.IGNORE_CASE),
+            "$1[REDACTED_EMAIL_BODY]$3"
+        )
     }
 
     private fun escapeXml(input: String): String {
