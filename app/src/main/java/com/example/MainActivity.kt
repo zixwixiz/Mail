@@ -411,8 +411,8 @@ fun JluMobileApp(viewModel: MainViewModel) {
     if (isCreateEventOpen) {
         CreateEventDialog(
             onDismiss = { viewModel.setCreateEventOpen(false) },
-            onCreate = { title, location, start, end ->
-                viewModel.createCalendarEvent(title, location, start, end)
+            onCreate = { title, location, start, end, timeZone ->
+                viewModel.createCalendarEvent(title, location, start, end, timeZone)
             }
         )
     }
