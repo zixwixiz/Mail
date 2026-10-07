@@ -322,7 +322,16 @@ class EwsClient(
               <soap:Body>
                 <m:FindItem Traversal="Shallow">
                   <m:ItemShape>
-                    <t:BaseShape>AllProperties</t:BaseShape>
+                    <t:BaseShape>IdOnly</t:BaseShape>
+                    <t:AdditionalProperties>
+                      <t:FieldURI FieldURI="item:Subject" />
+                      <t:FieldURI FieldURI="item:Body" />
+                      <t:FieldURI FieldURI="item:DateTimeReceived" />
+                      <t:FieldURI FieldURI="message:From" />
+                      <t:FieldURI FieldURI="message:ToRecipients" />
+                      <t:FieldURI FieldURI="message:IsRead" />
+                      <t:FieldURI FieldURI="item:HasAttachments" />
+                    </t:AdditionalProperties>
                   </m:ItemShape>
                   <m:IndexedPageItemView MaxEntriesReturned="$maxEntries" Offset="0" BasePoint="Beginning" />
                   <m:ParentFolderIds>
