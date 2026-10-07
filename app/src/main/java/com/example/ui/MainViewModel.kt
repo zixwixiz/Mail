@@ -165,6 +165,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeMailbox = MutableStateFlow(MailboxAccount.UNCONFIGURED)
     val activeMailbox: StateFlow<MailboxAccount> = _activeMailbox.asStateFlow()
 
+    init {
+        repository.availableMailboxes.value.firstOrNull()?.let {
+            _activeMailbox.value = it
+            syncMailboxData(it.id)
+        }
+    }
+
+    private fun syncMailboxData(mailboxId: String) {
+        viewModelScope.launch {
+            runCatching { repository.syncCalendar(mailboxId) }
+            runCatching { repository.syncContacts(mailboxId) }
+        }
+    }
+
+
     // Navigation Tab
     private val _currentTab = MutableStateFlow(NavigationTab.MAIL)
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
