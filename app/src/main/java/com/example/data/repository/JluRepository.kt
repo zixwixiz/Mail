@@ -1,6 +1,5 @@
 package com.example.data.repository
 
-import com.example.data.model.EwsAuthMechanism
 
 import com.example.data.local.AppDatabase
 import com.example.data.local.entities.CalendarEventEntity
@@ -17,7 +16,6 @@ import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
 import com.example.data.network.EwsEndpointPolicy
 import com.example.data.network.EwsProtocolVerifier
-import com.example.data.network.JluImapClient
 import com.example.data.network.EwsReceiveResult
 import com.example.data.network.EwsSendResult
 import kotlinx.coroutines.flow.Flow
@@ -33,7 +31,6 @@ class JluRepository(
     private val protocolVerifier: EwsProtocolVerifier = EwsProtocolVerifier(),
     val authVerificationService: AuthVerificationService = AuthVerificationService(),
     val ewsClient: EwsClient = EwsClient(),
-    val imapClient: JluImapClient = JluImapClient()
 ) {
     private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
     private val sessionPasswords = ConcurrentHashMap<String, String>()
@@ -55,27 +52,15 @@ class JluRepository(
         require(emailAddress.isNotBlank()) { "Email address is required." }
         require(password.isNotBlank()) { "Password is required." }
 
-        val imapLogin = imapClient.verifyLogin(
-            username = normalizedUsername,
-            password = password
-        )
-        check(imapLogin.isSuccess) {
-            imapLogin.errorMessage ?: "Login failed."
-        }
-
-        val verification = AuthVerificationResult(
-            isSuccess = true,
+        val verification = authVerificationService.verifyEndpointAuth(
             endpointUrl = endpointUrl.trim(),
-            httpStatusCode = 200,
-            rawWwwAuthenticateHeaders = emptyList(),
-            supportedMechanisms = emptyList(),
-            selectedMechanism = EwsAuthMechanism.UNKNOWN,
-            latencyMs = 0,
-            diagnosticLogs = listOf(
-                "JLU credentials accepted by IMAP over TLS.",
-                "Server: exchange.uni-giessen.de:993"
-            )
+            username = normalizedUsername,
+            password = password,
+            mailboxEmail = emailAddress.trim()
         )
+        check(verification.isSuccess) {
+            verification.errorMessage ?: "Exchange login failed."
+        }
 
         val account = MailboxAccount(
             id = "mb_" + UUID.nameUUIDFromBytes(normalizedUsername.lowercase().toByteArray(StandardCharsets.UTF_8)),
