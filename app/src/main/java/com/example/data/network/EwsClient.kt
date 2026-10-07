@@ -100,7 +100,8 @@ class EwsClient(
             .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
             .header("Content-Type", "text/xml; charset=utf-8")
             .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/CreateItem")
-            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client; Exchange2019)")
+            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client)")
+            .header("X-AnchorMailbox", senderEmail)
 
         // Add Basic authentication header if credentials are supplied
         if (username.isNotBlank() && password.isNotBlank()) {
