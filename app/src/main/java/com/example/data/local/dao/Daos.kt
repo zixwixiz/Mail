@@ -25,7 +25,7 @@ interface MailDao {
     fun getMessageById(id: String): Flow<MailMessageEntity?>
 
     @Query("SELECT * FROM mail_messages WHERE subject LIKE '%' || :query || '%' OR senderName LIKE '%' || :query || '%' OR bodyText LIKE '%' || :query || '%'")
-    fun searchMessages(query: String): Flow<List<MailMessageEntity>>
+    fun searchMessages(mailboxId: String, query: String): Flow<List<MailMessageEntity>>
 
     @Query("SELECT COUNT(*) FROM mail_messages WHERE mailboxId = :mailboxId AND isRead = 0")
     fun getUnreadCount(mailboxId: String): Flow<Int>
@@ -52,7 +52,7 @@ interface CalendarDao {
     fun getEvents(mailboxId: String): Flow<List<CalendarEventEntity>>
 
     @Query("SELECT * FROM calendar_events WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR location LIKE '%' || :query || '%'")
-    fun searchEvents(query: String): Flow<List<CalendarEventEntity>>
+    fun searchEvents(mailboxId: String, query: String): Flow<List<CalendarEventEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: CalendarEventEntity)
@@ -73,7 +73,7 @@ interface TaskDao {
     fun getTasks(mailboxId: String): Flow<List<TaskEntity>>
 
     @Query("SELECT * FROM tasks WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%'")
-    fun searchTasks(query: String): Flow<List<TaskEntity>>
+    fun searchTasks(mailboxId: String, query: String): Flow<List<TaskEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(task: TaskEntity)
@@ -94,7 +94,7 @@ interface ContactDao {
     fun getContacts(mailboxId: String): Flow<List<ContactEntity>>
 
     @Query("SELECT * FROM contacts WHERE displayName LIKE '%' || :query || '%' OR email LIKE '%' || :query || '%' OR department LIKE '%' || :query || '%'")
-    fun searchContacts(query: String): Flow<List<ContactEntity>>
+    fun searchContacts(mailboxId: String, query: String): Flow<List<ContactEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(contact: ContactEntity)
@@ -112,7 +112,7 @@ interface NoteDao {
     fun getNotes(mailboxId: String): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%'")
-    fun searchNotes(query: String): Flow<List<NoteEntity>>
+    fun searchNotes(mailboxId: String, query: String): Flow<List<NoteEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(note: NoteEntity)
