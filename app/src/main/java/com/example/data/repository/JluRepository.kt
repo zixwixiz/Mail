@@ -50,10 +50,13 @@ class JluRepository(
             throw IllegalArgumentException(error)
         }
 
-        val verification = authVerificationService.verifyEndpointAuth(endpointUrl, accountIdentifier)
+        val verification = authVerificationService.verifyEndpointAuth(endpointUrl)
         check(verification.isSuccess) {
-            verification.errorMessage ?: "EWS authentication challenge verification failed."
+            verification.errorMessage ?: "EWS endpoint verification failed."
         }
+
+        val accessProbe = ewsClient.fetchMessages(endpointUrl = endpointUrl.trim(), username = accountIdentifier.trim(), password = password, distinguishedFolderId = "INBOX", mailboxId = "verification-probe", mailboxEmail = emailAddress.trim(), maxEntries = 1)
+        check(accessProbe.isSuccess) { "Mailbox access verification failed: " + accessProbe.responseCode }
 
         val account = MailboxAccount(
             id = "acc_" + UUID.randomUUID(),
