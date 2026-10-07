@@ -167,7 +167,11 @@ class EwsProtocolVerifier(
 
             okHttpClient.newCall(request).execute().use { response ->
                 val headers = response.headers("WWW-Authenticate")
-                val mechanisms = headers
+                val safeHeaders = headers
+                    .map { it.trim().substringBefore(" ").trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                val mechanisms = safeHeaders
                     .map(EwsAuthMechanism::fromHeaderValue)
                     .distinct()
                     .filter { it != EwsAuthMechanism.UNKNOWN }
@@ -182,10 +186,10 @@ class EwsProtocolVerifier(
                             details = "HTTP 401 challenge received. Recognized mechanisms: " +
                                     mechanisms.joinToString { it.displayName },
                             latencyMs = System.currentTimeMillis() - startedAt,
-                            rawData = headers.joinToString("\n")
+                            rawData = safeHeaders.joinToString("\n")
                         ),
                         mechanisms = mechanisms,
-                        rawHeaders = headers,
+                        rawHeaders = safeHeaders,
                         httpStatus = response.code
                     )
                 }
