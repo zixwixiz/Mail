@@ -47,7 +47,7 @@ class AuthVerificationService(
             if (authHeaders.isEmpty()) {
                 Log.w(TAG, "No WWW-Authenticate header found (HTTP ${response.code})")
             } else {
-                authHeaders.forEach { Log.i(TAG, "WWW-Authenticate: $it") }
+                authHeaders.forEach { Log.i(TAG, "WWW-Authenticate scheme: " + it.trim().substringBefore(" ")) }
             }
             return response
         }
@@ -90,19 +90,20 @@ class AuthVerificationService(
                 val latency = System.currentTimeMillis() - startedAt
                 val statusCode = response.code
                 val rawHeaders = response.headers("WWW-Authenticate")
-                val mechanisms = rawHeaders
+                val safeHeaders = rawHeaders.map { it.trim().substringBefore(" ").trim() }.filter { it.isNotBlank() }.distinct()
+                val mechanisms = safeHeaders
                     .map(EwsAuthMechanism::fromHeaderValue)
                     .distinct()
 
                 log("Received HTTP $statusCode in ${latency}ms")
-                rawHeaders.forEach { log("WWW-Authenticate: $it") }
+                safeHeaders.forEach { log("WWW-Authenticate scheme: $it") }
 
                 if (statusCode != 401) {
                     return@withContext AuthVerificationResult(
                         isSuccess = false,
                         endpointUrl = endpointUrl,
                         httpStatusCode = statusCode,
-                        rawWwwAuthenticateHeaders = rawHeaders,
+                        rawWwwAuthenticateHeaders = safeHeaders,
                         supportedMechanisms = mechanisms,
                         selectedMechanism = mechanisms.firstOrNull() ?: EwsAuthMechanism.UNKNOWN,
                         latencyMs = latency,
