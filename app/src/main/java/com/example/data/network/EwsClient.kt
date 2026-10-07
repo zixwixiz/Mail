@@ -1,21 +1,15 @@
 package com.example.data.network
 
-import android.util.Base64
 import android.util.Log
 import com.example.data.local.entities.MailMessageEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
-import java.util.concurrent.TimeUnit
 
 data class EwsExecutionLog(
     val action: String,
@@ -45,16 +39,11 @@ data class EwsReceiveResult(
 )
 
 class EwsClient(
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .build()
+    private val exchangeHttpClient: ExchangeHttpClient = ExchangeHttpClient()
 ) {
     companion object {
         private const val TAG = "EwsClient"
         const val DEFAULT_EWS_ENDPOINT = EwsEndpointPolicy.DEFAULT_ENDPOINT
-        private val XML_MEDIA_TYPE = "text/xml; charset=utf-8".toMediaType()
     }
 
     // Stores the most recent EWS SOAP transaction log for inspection in UI
@@ -95,26 +84,18 @@ class EwsClient(
 
         Log.i(TAG, "[$endpointUrl] Executing EWS CreateItem ($disposition)...")
 
-        val requestBuilder = Request.Builder()
-            .url(endpointUrl)
-            .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
-            .header("Content-Type", "text/xml; charset=utf-8")
-            .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/CreateItem")
-            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client)")
-            .header("X-AnchorMailbox", senderEmail)
-
-        // Add Basic authentication header if credentials are supplied
-        if (username.isNotBlank() && password.isNotBlank()) {
-            val credentials = "$username:$password"
-            val encoded = Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-            requestBuilder.header("Authorization", "Basic $encoded")
-        }
-
         try {
-            val response = okHttpClient.newCall(requestBuilder.build()).execute()
+            val response = exchangeHttpClient.postSoap(
+                endpointUrl = endpointUrl,
+                username = username,
+                password = password,
+                soapAction = "http://schemas.microsoft.com/exchange/services/2006/messages/CreateItem",
+                soapXml = soapRequest,
+                anchorMailbox = senderEmail
+            )
             val duration = System.currentTimeMillis() - startTime
-            val statusCode = response.code
-            val responseBody = response.body?.string() ?: ""
+            val statusCode = response.statusCode
+            val responseBody = response.body
 
             Log.i(TAG, "EWS CreateItem finished with HTTP $statusCode in ${duration}ms")
 
@@ -205,25 +186,18 @@ class EwsClient(
         val soapRequest = buildFindItemSoapEnvelope(folderId = ewsFolder, mailboxEmail = mailboxEmail, maxEntries = maxEntries)
         Log.i(TAG, "[$endpointUrl] Executing EWS FindItem for folder '$ewsFolder'...")
 
-        val requestBuilder = Request.Builder()
-            .url(endpointUrl)
-            .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
-            .header("Content-Type", "text/xml; charset=utf-8")
-            .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/FindItem")
-            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client)")
-            .header("X-AnchorMailbox", mailboxEmail)
-
-        if (username.isNotBlank() && password.isNotBlank()) {
-            val credentials = "$username:$password"
-            val encoded = Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-            requestBuilder.header("Authorization", "Basic $encoded")
-        }
-
         try {
-            val response = okHttpClient.newCall(requestBuilder.build()).execute()
+            val response = exchangeHttpClient.postSoap(
+                endpointUrl = endpointUrl,
+                username = username,
+                password = password,
+                soapAction = "http://schemas.microsoft.com/exchange/services/2006/messages/FindItem",
+                soapXml = soapRequest,
+                anchorMailbox = mailboxEmail
+            )
             val duration = System.currentTimeMillis() - startTime
-            val statusCode = response.code
-            val responseBody = response.body?.string() ?: ""
+            val statusCode = response.statusCode
+            val responseBody = response.body
 
             Log.i(TAG, "EWS FindItem completed with HTTP $statusCode in ${duration}ms")
 
