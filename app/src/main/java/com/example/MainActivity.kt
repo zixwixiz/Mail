@@ -130,8 +130,6 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val currentTranslation by viewModel.currentTranslation.collectAsStateWithLifecycle()
     val smartSuggestions by viewModel.smartSuggestions.collectAsStateWithLifecycle()
     val uiFeedback by viewModel.uiFeedback.collectAsStateWithLifecycle()
-    val pendingSyncCount by viewModel.pendingSyncCount.collectAsStateWithLifecycle()
-    val isBiometricLockEnabled by viewModel.isBiometricLockEnabled.collectAsStateWithLifecycle()
 
     val isSearchOpen by viewModel.isSearchOpen.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -455,14 +453,10 @@ fun JluMobileApp(viewModel: MainViewModel) {
         ) {
             SettingsScreen(
                 activeMailbox = activeMailbox,
-                isBiometricLockEnabled = isBiometricLockEnabled,
-                onToggleBiometricLock = { viewModel.toggleBiometricLock(it) },
-                pendingSyncCount = pendingSyncCount,
-                onFlushSyncQueue = { viewModel.flushSyncQueue() },
                 onExportDiagnostics = {
                     Toast.makeText(
                         context,
-                        "Sanitized diagnostic report exported (RFC 7235 / EWS Exchange 2019 logs saved without credentials).",
+                        "Diagnostics are available on the verification screen; no report file was created.",
                         Toast.LENGTH_LONG
                     ).show()
                 },
