@@ -31,7 +31,7 @@ class EwsProtocolVerifier(
 
     fun executeVerificationFlow(
         host: String = "owa.uni-giessen.de",
-        ewsUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
+        ewsUrl: String = EwsEndpointPolicy.DEFAULT_ENDPOINT,
         username: String? = null,
         password: String? = null,
         mailboxEmail: String? = null
