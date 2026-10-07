@@ -39,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -345,7 +346,7 @@ fun CreateEventDialog(
     var selectedMinute by remember { mutableStateOf<Int?>(null) }
 
     val canSchedule = title.isNotBlank() && selectedDate != null && selectedHour != null && selectedMinute != null
-    val dateLabel = selectedDate?.let { String.format(Locale.GERMANY, "%1$td.%1$tm.%1$tY", it) } ?: "Choose date"
+    val dateLabel = selectedDate?.let { SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(it.time) } ?: "Choose date"
     val timeLabel = if (selectedHour != null && selectedMinute != null) {
         String.format(Locale.GERMANY, "%02d:%02d", selectedHour, selectedMinute)
     } else {
