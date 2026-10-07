@@ -280,7 +280,7 @@ class EwsProtocolVerifier(
         """.trimIndent()
 
         try {
-            val response = exchangeHttpClient.postSoap(
+            val response = ExchangeHttpClient().postSoap(
                 endpointUrl = ewsUrl,
                 username = username!!,
                 password = password!!,
