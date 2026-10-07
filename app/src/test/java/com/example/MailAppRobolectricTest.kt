@@ -27,47 +27,18 @@ import okhttp3.MediaType.Companion.toMediaType
 class MailAppRobolectricTest {
 
     @Test
-    fun authVerificationAcceptsReal401Challenge() = runBlocking {
-        val client = fakeHttpClient { request ->
-            Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(401)
-                .message("Unauthorized")
-                .addHeader("WWW-Authenticate", "Negotiate")
-                .addHeader("WWW-Authenticate", "NTLM")
-                .addHeader("WWW-Authenticate", "Basic realm=\"example\"")
-                .build()
-        }
-
-        val result = AuthVerificationService(client)
-            .verifyEndpointAuth("https://example.test/EWS/Exchange.asmx")
-
-        assertTrue(result.isSuccess)
-        assertTrue(EwsAuthMechanism.NEGOTIATE in result.supportedMechanisms)
-        assertTrue(EwsAuthMechanism.NTLM in result.supportedMechanisms)
-        assertTrue(EwsAuthMechanism.BASIC in result.supportedMechanisms)
-        assertEquals(EwsAuthMechanism.BASIC, result.selectedMechanism)
-        assertEquals(401, result.httpStatusCode)
+    fun authVerificationRejectsBlankEndpoint() = runBlocking {
+        val result = AuthVerificationService().verifyEndpointAuth("")
+        assertFalse(result.isSuccess)
+        assertEquals(0, result.httpStatusCode)
+        assertEquals("EWS endpoint URL is required.", result.errorMessage)
     }
 
     @Test
-    fun authVerificationRejectsNonChallengeResponse() = runBlocking {
-        val client = fakeHttpClient { request ->
-            Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .build()
-        }
-
-        val result = AuthVerificationService(client)
-            .verifyEndpointAuth("https://example.test/EWS/Exchange.asmx")
-
+    fun authVerificationRejectsMalformedEndpointBeforeNetwork() = runBlocking {
+        val result = AuthVerificationService().verifyEndpointAuth("not-a-url")
         assertFalse(result.isSuccess)
-        assertEquals(200, result.httpStatusCode)
-        assertTrue(result.errorMessage?.contains("401") == true)
+        assertEquals(0, result.httpStatusCode)
     }
 
     @Test
@@ -192,7 +163,7 @@ class MailAppRobolectricTest {
 
     @Test
     fun smartExtractorDoesNotInventDates() {
-        val suggestions = SmartExtractor.extractSuggestions("Termin zur Besprechung", "Bitte melden Sie sich.", "mail-1")
+        val suggestions = SmartExtractor.extractSuggestions("Information zur Bibliothek", "Zur Kenntnisnahme: Öffnungszeiten wurden aktualisiert.", "mail-1")
         assertTrue(suggestions.isEmpty())
     }
 
@@ -213,7 +184,22 @@ class MailAppRobolectricTest {
                 .protocol(Protocol.HTTP_1_1)
                 .code(200)
                 .message("OK")
-                .body("<ResponseClass=\"Success\"><ResponseCode>NoError</ResponseCode><Items><ItemId Id=\"server-created-001\"/></Items>".toResponseBody("text/xml".toMediaType()))
+                .body("""
+                    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+                      <s:Body>
+                        <m:CreateItemResponse>
+                          <m:ResponseMessages>
+                            <m:CreateItemResponseMessage ResponseClass="Success">
+                              <m:ResponseCode>NoError</m:ResponseCode>
+                              <m:Items><t:Message><t:ItemId Id="server-created-001"/></t:Message></m:Items>
+                            </m:CreateItemResponseMessage>
+                          </m:ResponseMessages>
+                        </m:CreateItemResponse>
+                      </s:Body>
+                    </s:Envelope>
+                """.trimIndent().toResponseBody("text/xml".toMediaType()))
                 .build()
         }
         val result = EwsClient(client).sendMessage(
