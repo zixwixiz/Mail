@@ -45,6 +45,7 @@ android {
     resources {
       excludes += "/META-INF/NOTICE.md"
       excludes += "/META-INF/LICENSE.md"
+      excludes += "/META-INF/DEPENDENCIES"
     }
   }
   buildFeatures {
@@ -73,11 +74,6 @@ dependencies {
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  // implementation(libs.firebase.firestore)
-
-  // Sign-In via Credential Manager:
-  // implementation(libs.firebase.auth)
-  // implementation(libs.googleid)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
