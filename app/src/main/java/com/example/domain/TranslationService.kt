@@ -65,11 +65,7 @@ object TranslationService {
         val translator = Translation.getClient(options)
 
         return try {
-            translator.downloadModelIfNeeded(
-                DownloadConditions.Builder()
-                    .requireWifi()
-                    .build()
-            ).await()
+            translator.downloadModelIfNeeded(DownloadConditions.Builder().build()).await()
             val translated = translator.translate(text).await()
             TranslationResult(
                 originalText = text,
