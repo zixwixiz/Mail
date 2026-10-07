@@ -364,16 +364,24 @@ class EwsClient(
             var currentSenderEmail = ""
             val currentRecipients = mutableListOf<String>()
             var currentReceivedMs = 0L
-            var currentBody = ""
+            var currentBody = StringBuilder()
             var currentBodyType = ""
             var currentIsRead = false
             var currentHasAttachments = false
+            val currentAttachments = mutableListOf<String>()
+            var currentAttachmentName = ""
+            var currentAttachmentSize: Long? = null
             var currentId = ""
             var insideMessage = false
             var insideFrom = false
             var insideToRecipients = false
             var insideBody = false
+            var insideFileAttachment = false
             var currentTag = ""
+
+            fun appendBodyBreak() {
+                if (currentBody.isNotEmpty() && !currentBody.endsWith("\n")) currentBody.append("\n")
+            }
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 when (eventType) {
@@ -387,10 +395,13 @@ class EwsClient(
                                 currentSenderEmail = ""
                                 currentRecipients.clear()
                                 currentReceivedMs = 0L
-                                currentBody = ""
+                                currentBody = StringBuilder()
                                 currentBodyType = ""
                                 currentIsRead = false
                                 currentHasAttachments = false
+                                currentAttachments.clear()
+                                currentAttachmentName = ""
+                                currentAttachmentSize = null
                                 currentId = ""
                             }
                             insideMessage && currentTag.equals("From", ignoreCase = true) -> insideFrom = true
@@ -402,13 +413,25 @@ class EwsClient(
                             insideMessage && currentTag.equals("ItemId", ignoreCase = true) -> {
                                 currentId = parser.getAttributeValue(null, "Id").orEmpty()
                             }
+                            insideMessage && currentTag.equals("FileAttachment", ignoreCase = true) -> {
+                                insideFileAttachment = true
+                                currentAttachmentName = ""
+                                currentAttachmentSize = null
+                            }
+                            insideBody && currentTag.lowercase(Locale.US) in setOf(
+                                "br", "p", "div", "li", "tr", "table", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"
+                            ) -> appendBodyBreak()
                         }
                     }
 
                     XmlPullParser.TEXT -> {
-                        val text = parser.text?.trim().orEmpty()
+                        val text = parser.text.orEmpty().replace("\u00A0", " ").trim()
                         if (insideMessage && text.isNotEmpty()) {
                             when {
+                                insideFileAttachment && currentTag.equals("Name", ignoreCase = true) ->
+                                    currentAttachmentName = text
+                                insideFileAttachment && currentTag.equals("Size", ignoreCase = true) ->
+                                    currentAttachmentSize = text.toLongOrNull()
                                 currentTag.equals("Subject", ignoreCase = true) ->
                                     currentSubject = text
                                 insideFrom && currentTag.equals("Name", ignoreCase = true) && currentSenderName.isBlank() ->
@@ -420,7 +443,7 @@ class EwsClient(
                                 currentTag.equals("DateTimeReceived", ignoreCase = true) ->
                                     currentReceivedMs = parseIsoDateTime(text)
                                 insideBody ->
-                                    currentBody += if (currentBody.isBlank()) text else " $text"
+                                    currentBody.append(text)
                                 currentTag.equals("IsRead", ignoreCase = true) ->
                                     currentIsRead = text.equals("true", ignoreCase = true)
                                 currentTag.equals("HasAttachments", ignoreCase = true) ->
@@ -433,11 +456,29 @@ class EwsClient(
                         when {
                             parser.name.equals("From", ignoreCase = true) -> insideFrom = false
                             parser.name.equals("ToRecipients", ignoreCase = true) -> insideToRecipients = false
-                            parser.name.equals("Body", ignoreCase = true) -> insideBody = false
+                            parser.name.equals("Body", ignoreCase = true) -> {
+                                insideBody = false
+                                appendBodyBreak()
+                            }
+                            insideBody && parser.name.lowercase(Locale.US) in setOf(
+                                "p", "div", "li", "tr", "table", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"
+                            ) -> appendBodyBreak()
+                            parser.name.equals("FileAttachment", ignoreCase = true) -> {
+                                if (currentAttachmentName.isNotBlank()) {
+                                    val sizeText = currentAttachmentSize?.let { " (\${formatAttachmentSize(it)})" }.orEmpty()
+                                    currentAttachments += currentAttachmentName + sizeText
+                                }
+                                insideFileAttachment = false
+                                currentAttachmentName = ""
+                                currentAttachmentSize = null
+                            }
                             parser.name.equals("Message", ignoreCase = true) && insideMessage -> {
                                 if (currentId.isNotBlank() &&
                                     (currentSubject.isNotBlank() || currentSenderEmail.isNotBlank())
                                 ) {
+                                    val body = currentBody.toString()
+                                        .replace(Regex("\n{3,}"), "\n\n")
+                                        .trim()
                                     val bodyIsHtml = currentBodyType.equals("HTML", ignoreCase = true)
                                     messages += MailMessageEntity(
                                         id = currentId,
@@ -449,17 +490,19 @@ class EwsClient(
                                         senderEmail = currentSenderEmail,
                                         recipients = currentRecipients.joinToString(", "),
                                         receivedTimestamp = currentReceivedMs,
-                                        bodyText = if (bodyIsHtml) stripHtml(currentBody) else currentBody,
-                                        bodyHtml = if (bodyIsHtml) currentBody else "",
+                                        bodyText = body,
+                                        bodyHtml = if (bodyIsHtml) body else "",
                                         isRead = currentIsRead,
                                         isFlagged = false,
-                                        hasAttachments = currentHasAttachments
+                                        hasAttachments = currentHasAttachments || currentAttachments.isNotEmpty(),
+                                        attachments = currentAttachments.joinToString("\n")
                                     )
                                 }
                                 insideMessage = false
                                 insideFrom = false
                                 insideToRecipients = false
                                 insideBody = false
+                                insideFileAttachment = false
                             }
                         }
                     }
@@ -467,15 +510,17 @@ class EwsClient(
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "XML parsing of EWS response failed")
+            Log.w(TAG, "XML parsing of EWS response failed: \${e.localizedMessage}")
         }
 
         return messages
     }
 
-    private fun stripHtml(value: String): String =
-        value.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
-
+    private fun formatAttachmentSize(bytes: Long): String = when {
+        bytes < 1024L -> "\${bytes} B"
+        bytes < 1024L * 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+        else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    }
 
     private fun parseEwsResponseCode(xmlContent: String): String {
         if (xmlContent.isBlank()) return ""
