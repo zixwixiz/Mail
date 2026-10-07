@@ -88,7 +88,7 @@ fun TasksScreen(
         ) {
             item {
                 Text(
-                    text = "JLU Tasks & Deadlines",
+                    text = "Tasks",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
