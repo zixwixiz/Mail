@@ -202,7 +202,7 @@ class EwsClient(
             Log.i(TAG, "EWS FindItem completed with HTTP $statusCode in ${duration}ms")
 
             val summaryMessages = parseEwsItemsFromXml(responseBody, mailboxId, distinguishedFolderId.uppercase())
-            val parsedMessages = if (summaryMessages.isNotEmpty()) summaryMessages else emptyList()
+            val parsedMessages = if (summaryMessages.isNotEmpty()) EwsFullMessageClient(exchangeHttpClient).get(endpointUrl, username, password, mailboxEmail, mailboxId, distinguishedFolderId.uppercase(), summaryMessages.map { it.id }) else emptyList()
 
             val executionLog = EwsExecutionLog(
                 action = "FindItem ($ewsFolder)",
