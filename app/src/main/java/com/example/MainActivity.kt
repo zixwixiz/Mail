@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.MainViewModel
+import com.example.data.sync.MailSyncScheduler
 import com.example.ui.NavigationTab
 import com.example.ui.components.MailboxSelectorBar
 import com.example.ui.screens.AddAccountDialog
@@ -96,6 +97,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        MailSyncScheduler.schedule(this)
         setContent {
             MyApplicationTheme {
                 JluMobileApp(viewModel = viewModel)
