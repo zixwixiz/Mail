@@ -65,7 +65,7 @@ class JluRepository(
             isSharedMailbox = isSharedMailbox,
             permission = permission,
             department = department.ifBlank { "Justus-Liebig-Universität Gießen" },
-            username = accountIdentifier.trim(),
+            username = normalizedUsername,
             endpointUrl = endpointUrl.trim()
         )
         sessionPasswords[account.id] = password
