@@ -81,7 +81,7 @@ data class NoteEntity(
 
 @Entity(tableName = "endpoint_verification")
 data class EndpointVerificationEntity(
-    @PrimaryKey val id: Int = 1,
+    @PrimaryKey val mailboxId: String,
     val host: String,
     val ewsUrl: String,
     val gate1Passed: Boolean,
