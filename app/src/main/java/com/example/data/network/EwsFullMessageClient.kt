@@ -5,7 +5,7 @@ import com.example.data.local.entities.MailMessageEntity
 class EwsFullMessageClient(private val http: ExchangeHttpClient = ExchangeHttpClient()) {
     suspend fun get(endpoint: String, username: String, password: String, mailboxEmail: String, mailboxId: String, folder: String, ids: List<String>): List<MailMessageEntity> {
         if (ids.isEmpty()) return emptyList()
-        val itemIds = ids.joinToString("\n") { "<t:ItemId Id="" + xml(it) + "" />" }
+        val itemIds = ids.joinToString("\n") { "<t:ItemId Id=\"${xml(it)}\" />" }
         val soap = """
             <?xml version="1.0" encoding="utf-8"?>
             <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -44,5 +44,5 @@ class EwsFullMessageClient(private val http: ExchangeHttpClient = ExchangeHttpCl
         return EwsClient().parseEwsItemsFromXml(response.body, mailboxId, folder)
     }
 
-    private fun xml(value: String) = value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace(""","&quot;").replace("'","&apos;")
+    private fun xml(value: String) = value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;")
 }
