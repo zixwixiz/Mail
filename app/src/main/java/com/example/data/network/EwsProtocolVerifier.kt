@@ -223,8 +223,25 @@ class EwsProtocolVerifier(
         }
     }
 
-    private suspend fun testEwsSoapEnvelope(ewsUrl: String): GateStepResult = withContext(Dispatchers.IO) {
+    private suspend fun testEwsSoapEnvelope(
+        ewsUrl: String,
+        username: String?,
+        password: String?,
+        mailboxEmail: String?
+    ): GateStepResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
+        val hasCredentials = !username.isNullOrBlank() && !password.isNullOrBlank() && !mailboxEmail.isNullOrBlank()
+        if (!hasCredentials) {
+            return@withContext GateStepResult(
+                gateNumber = 3,
+                title = "Gate 3 — EWS SOAP Endpoint Probe",
+                description = "Authenticated GetFolder SOAP request",
+                status = GateStatus.SKIPPED,
+                details = "Skipped because no active mailbox credentials are available.",
+                latencyMs = 0
+            )
+        }
+
         val soapPayload = """
             <?xml version="1.0" encoding="utf-8"?>
             <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -236,7 +253,13 @@ class EwsProtocolVerifier(
               <soap:Body>
                 <m:GetFolder>
                   <m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>
-                  <m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds>
+                  <m:FolderIds>
+                    <t:DistinguishedFolderId Id="inbox">
+                      <t:Mailbox>
+                        <t:EmailAddress>${mailboxEmail.trim()}</t:EmailAddress>
+                      </t:Mailbox>
+                    </t:DistinguishedFolderId>
+                  </m:FolderIds>
                 </m:GetFolder>
               </soap:Body>
             </soap:Envelope>
@@ -249,25 +272,26 @@ class EwsProtocolVerifier(
                 .header("Content-Type", "text/xml; charset=utf-8")
                 .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder")
                 .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS SOAP Verification)")
+                .header("Authorization", okhttp3.Credentials.basic(username!!, password!!))
+                .header("X-AnchorMailbox", mailboxEmail!!)
                 .build()
 
             okHttpClient.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
-                val accepted = response.code in 200..299 || response.code == 401
+                val responseCode = parseResponseCode(body)
+                val passed = response.code in 200..299 && responseCode == "NoError"
                 val detail = when {
-                    response.code in 200..299 ->
-                        "EWS SOAP endpoint accepted the request (HTTP " + response.code + ")."
-                    response.code == 401 ->
-                        "EWS SOAP endpoint received the SOAP request and returned an authentication challenge (HTTP 401)."
-                    else ->
-                        "EWS SOAP endpoint returned HTTP " + response.code + "."
+                    passed -> "Authenticated EWS SOAP GetFolder completed successfully (HTTP ${response.code})."
+                    response.code == 401 -> "Authenticated EWS SOAP request was rejected with HTTP 401."
+                    responseCode.isNotBlank() -> "EWS SOAP returned ${responseCode} (HTTP ${response.code})."
+                    else -> "EWS SOAP endpoint returned HTTP ${response.code}."
                 }
 
                 GateStepResult(
                     gateNumber = 3,
                     title = "Gate 3 — EWS SOAP Endpoint Probe",
-                    description = "Harmless GetFolder SOAP request",
-                    status = if (accepted) GateStatus.PASSED else GateStatus.FAILED,
+                    description = "Authenticated GetFolder SOAP request",
+                    status = if (passed) GateStatus.PASSED else GateStatus.FAILED,
                     details = detail,
                     latencyMs = System.currentTimeMillis() - startedAt,
                     rawData = body.take(4000)
@@ -277,13 +301,32 @@ class EwsProtocolVerifier(
             GateStepResult(
                 gateNumber = 3,
                 title = "Gate 3 — EWS SOAP Endpoint Probe",
-                description = "Harmless GetFolder SOAP request",
+                description = "Authenticated GetFolder SOAP request",
                 status = GateStatus.FAILED,
-                details = "EWS SOAP request failed: " +
-                        (e.localizedMessage ?: e.javaClass.simpleName),
+                details = "EWS SOAP request failed: " + (e.localizedMessage ?: e.javaClass.simpleName),
                 latencyMs = System.currentTimeMillis() - startedAt
             )
         }
     }
 
+    private fun parseResponseCode(xmlContent: String): String {
+        if (xmlContent.isBlank()) return ""
+        return try {
+            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xmlContent))
+            var currentTag = ""
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> currentTag = parser.name
+                    XmlPullParser.TEXT -> if (currentTag.equals("ResponseCode", ignoreCase = true)) return parser.text.trim()
+                }
+                eventType = parser.next()
+            }
+            ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
 }
