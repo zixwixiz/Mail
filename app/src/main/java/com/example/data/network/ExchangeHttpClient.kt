@@ -2,20 +2,20 @@ package com.example.data.network
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.http.HttpHeaders
-import org.apache.http.auth.AuthScope
-import org.apache.http.auth.NTCredentials
-import org.apache.http.client.CredentialsProvider
-import org.apache.http.client.config.RequestConfig
-import org.apache.http.client.methods.HttpPost
-import org.apache.http.entity.ContentType
-import org.apache.http.entity.StringEntity
-import org.apache.http.impl.auth.NTLMSchemeFactory
-import org.apache.http.impl.client.BasicCredentialsProvider
-import org.apache.http.impl.client.CloseableHttpClient
-import org.apache.http.impl.client.HttpClients
-import org.apache.http.config.RegistryBuilder
-import org.apache.http.auth.AuthSchemeProvider
+import cz.msebera.android.httpclient.HttpHeaders
+import cz.msebera.android.httpclient.auth.AuthScope
+import cz.msebera.android.httpclient.auth.NTCredentials
+import cz.msebera.android.httpclient.client.CredentialsProvider
+import cz.msebera.android.httpclient.client.config.RequestConfig
+import cz.msebera.android.httpclient.client.methods.HttpPost
+import cz.msebera.android.httpclient.entity.ContentType
+import cz.msebera.android.httpclient.entity.StringEntity
+import cz.msebera.android.httpclient.impl.auth.NTLMSchemeFactory
+import cz.msebera.android.httpclient.impl.client.BasicCredentialsProvider
+import cz.msebera.android.httpclient.impl.client.CloseableHttpClient
+import cz.msebera.android.httpclient.impl.client.HttpClients
+import cz.msebera.android.httpclient.config.RegistryBuilder
+import cz.msebera.android.httpclient.auth.AuthSchemeProvider
 
 data class ExchangeHttpResponse(
     val statusCode: Int,
