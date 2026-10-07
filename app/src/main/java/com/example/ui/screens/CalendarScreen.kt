@@ -44,6 +44,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -334,7 +336,7 @@ fun CalendarEventCard(
 @Composable
 fun CreateEventDialog(
     onDismiss: () -> Unit,
-    onCreate: (title: String, location: String, startEpochMs: Long, endEpochMs: Long) -> Unit,
+    onCreate: (title: String, location: String, startEpochMs: Long, endEpochMs: Long, timeZone: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -344,6 +346,8 @@ fun CreateEventDialog(
     var selectedDate by remember { mutableStateOf<Calendar?>(null) }
     var selectedHour by remember { mutableStateOf<Int?>(null) }
     var selectedMinute by remember { mutableStateOf<Int?>(null) }
+    var selectedTimeZone by remember { mutableStateOf(TimezoneEngine.JLU_CAMPUS_ZONE) }
+    var timeZoneMenuExpanded by remember { mutableStateOf(false) }
 
     val canSchedule = title.isNotBlank() && selectedDate != null && selectedHour != null && selectedMinute != null
     val dateLabel = selectedDate?.let { SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(it.time) } ?: "Choose date"
@@ -408,11 +412,11 @@ fun CreateEventDialog(
             ) {
                 OutlinedButton(
                     onClick = {
-                        val now = Calendar.getInstance()
+                        val now = Calendar.getInstance(TimeZone.getTimeZone(selectedTimeZone))
                         DatePickerDialog(
                             context,
                             { _, year, month, day ->
-                                selectedDate = Calendar.getInstance().apply {
+                                selectedDate = Calendar.getInstance(TimeZone.getTimeZone(selectedTimeZone)).apply {
                                     set(Calendar.YEAR, year)
                                     set(Calendar.MONTH, month)
                                     set(Calendar.DAY_OF_MONTH, day)
@@ -449,8 +453,35 @@ fun CreateEventDialog(
             }
 
             Spacer(modifier = Modifier.height(6.dp))
+            Box {
+                OutlinedButton(
+                    onClick = { timeZoneMenuExpanded = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Event time zone: " +
+                            (TimezoneEngine.POPULAR_TIMEZONES.firstOrNull { it.first == selectedTimeZone }?.second ?: selectedTimeZone)
+                    )
+                }
+                DropdownMenu(
+                    expanded = timeZoneMenuExpanded,
+                    onDismissRequest = { timeZoneMenuExpanded = false }
+                ) {
+                    TimezoneEngine.POPULAR_TIMEZONES.forEach { (zoneId, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                selectedTimeZone = zoneId
+                                timeZoneMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Events are saved locally in this app; Exchange calendar sync is not implemented yet.",
+                text = "Calendar shows both JLU/Gießen time and your selected local zone. New events are created in the selected zone.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -464,7 +495,7 @@ fun CreateEventDialog(
                     start.set(Calendar.MINUTE, selectedMinute!!)
                     start.set(Calendar.SECOND, 0)
                     start.set(Calendar.MILLISECOND, 0)
-                    onCreate(title.trim(), location.trim(), start.timeInMillis, start.timeInMillis + 60 * 60 * 1000L)
+                    onCreate(title.trim(), location.trim(), start.timeInMillis, start.timeInMillis + 60 * 60 * 1000L, selectedTimeZone)
                 },
                 enabled = canSchedule,
                 modifier = Modifier
