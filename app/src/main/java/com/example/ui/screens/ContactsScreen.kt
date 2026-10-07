@@ -101,7 +101,7 @@ fun ContactsScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Official contacts across departments, institutes, examination offices, and IT services",
+                    text = "Contacts stored in this app. University directory integration is not connected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
