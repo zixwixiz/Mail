@@ -504,7 +504,8 @@ class EwsClient(
 
     private fun parseEwsResponseCode(xmlContent: String): String {
         if (xmlContent.isBlank()) return ""
-        return try {
+        var found = ""
+        try {
             val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
             val parser = factory.newPullParser()
             parser.setInput(StringReader(xmlContent))
@@ -513,14 +514,18 @@ class EwsClient(
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 when (eventType) {
                     XmlPullParser.START_TAG -> currentTag = parser.name
-                    XmlPullParser.TEXT -> if (currentTag.equals("ResponseCode", ignoreCase = true)) return parser.text.trim()
+                    XmlPullParser.TEXT -> if (
+                        currentTag.equals("ResponseCode", ignoreCase = true) && found.isBlank()
+                    ) {
+                        found = parser.text.trim()
+                    }
                 }
                 eventType = parser.next()
             }
         } catch (_: Exception) {
             return ""
         }
-        return ""
+        return found
     }
 
     private fun parseEwsCreatedItemId(xmlContent: String): String? {
