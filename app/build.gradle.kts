@@ -45,8 +45,6 @@ android {
     resources {
       excludes += "/META-INF/NOTICE.md"
       excludes += "/META-INF/LICENSE.md"
-      excludes += "/META-INF/mailcap"
-      excludes += "/META-INF/mimetypes.default"
     }
   }
   buildFeatures {
@@ -83,7 +81,7 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
-  implementation(libs.android.mail)
+  implementation(libs.apache.httpclient)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
