@@ -50,6 +50,7 @@ fun SettingsScreen(
     activeMailbox: MailboxAccount,
     onShareDiagnostics: () -> Unit,
     onAddAccountClick: () -> Unit = {},
+    onDisconnectAccount: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -177,6 +178,20 @@ fun SettingsScreen(
                     Text(text = "• Identity format: S-Kennung / ad\\Account", style = MaterialTheme.typography.bodySmall)
                     Text(text = "• Active Mailbox: ${activeMailbox.emailAddress} (${activeMailbox.permission.label})", style = MaterialTheme.typography.bodySmall)
                 }
+            }
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onDisconnectAccount,
+                enabled = activeMailbox.isConfigured,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("disconnect_account_button")
+            ) {
+                Icon(Icons.Default.Lock, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Disconnect Current Account")
             }
         }
 
