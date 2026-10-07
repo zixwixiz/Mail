@@ -109,7 +109,7 @@ class JluRepository(
             endpointUrl = mailbox.endpointUrl,
             username = mailbox.username,
             password = sessionPasswords[mailbox.id]
-                ?: error("Mailbox credentials are no longer available; reconnect the account.")
+                ?: error("Mailbox credentials are no longer available; reconnect the account."),
             senderEmail = mailbox.emailAddress,
             recipients = recipientList,
             subject = subject.trim(),
@@ -149,7 +149,8 @@ class JluRepository(
         val result = ewsClient.fetchMessages(
             endpointUrl = mailbox.endpointUrl,
             username = mailbox.username,
-            password = mailbox.password,
+            password = sessionPasswords[mailbox.id]
+                ?: error("Mailbox credentials are no longer available; reconnect the account."),
             distinguishedFolderId = folder,
             mailboxId = mailboxId
         )
