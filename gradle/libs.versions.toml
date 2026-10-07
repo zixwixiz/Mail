@@ -21,7 +21,7 @@ kotlinxCoroutinesAndroid = "1.10.2"
 kotlinxCoroutinesCore = "1.10.2"
 okhttp = "4.10.0"
 robolectric = "4.16.1"
-androidMail = "1.6.8"
+httpClient = "4.5.14"
 
 
 [libraries]
@@ -53,7 +53,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
-android-mail = { group = "com.sun.mail", name = "android-mail", version.ref = "androidMail" }
+apache-httpclient = { group = "org.apache.httpcomponents", name = "httpclient", version.ref = "httpClient" }
 
 
 [plugins]
