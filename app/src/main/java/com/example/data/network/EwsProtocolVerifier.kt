@@ -121,7 +121,8 @@ class EwsProtocolVerifier(
             val socket = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket() as javax.net.ssl.SSLSocket
             socket.use {
                 it.soTimeout = 6000
-                it.connect(InetSocketAddress(addresses.first(), 443), 6000)
+                it.sslParameters = it.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+                it.connect(InetSocketAddress(host, 443), 6000)
                 it.startHandshake()
                 GateStepResult(
                     gateNumber = 1,
