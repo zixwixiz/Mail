@@ -117,7 +117,7 @@ class EwsProtocolVerifier(
         try {
             val addresses = java.net.InetAddress.getAllByName(host)
             require(addresses.isNotEmpty()) { "DNS returned no addresses for " + host }
-            val ipList = addresses.joinToString(", ") { it.hostAddress }
+            val ipList = addresses.joinToString(", ") { it.hostAddress.orEmpty() }
 
             val socket = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket() as javax.net.ssl.SSLSocket
             socket.use {
