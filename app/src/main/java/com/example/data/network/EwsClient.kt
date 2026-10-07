@@ -158,7 +158,7 @@ class EwsClient(
             val executionLog = EwsExecutionLog(
                 action = "CreateItem ($disposition)",
                 endpointUrl = endpointUrl,
-                requestSoapXml = soapRequest,
+                requestSoapXml = redactSensitiveXml(soapRequest),
                 responseSoapXml = null,
                 httpStatusCode = null,
                 durationMs = duration,
