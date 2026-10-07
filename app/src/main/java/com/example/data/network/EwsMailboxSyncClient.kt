@@ -110,6 +110,6 @@ class EwsMailboxSyncClient(private val http: ExchangeHttpClient = ExchangeHttpCl
     private fun parseTime(v:String):Long=runCatching{SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss",Locale.US).apply{timeZone=TimeZone.getTimeZone("UTC")}.parse(v.substringBefore("."))?.time?:0L}.getOrDefault(0L)
     private fun utc(ms:Long):String=SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'",Locale.US).apply{timeZone=TimeZone.getTimeZone("UTC")}.format(Date(ms))
     private fun strip(v:String)=v.replace(Regex("<[^>]*>")," ").replace(Regex("\\s+")," ").trim()
-    private fun escape(v:String)=v.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace(""","&quot;").replace("'","&apos;")
+    private fun escape(v:String)=v.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;")
     private fun String.responseCode():String{var result="";runCatching{val p=parser(this);var tag="";while(p.eventType!=XmlPullParser.END_DOCUMENT){if(p.eventType==XmlPullParser.START_TAG)tag=p.name;if(p.eventType==XmlPullParser.TEXT&&tag.equals("ResponseCode",true)){result=p.text.trim();break};p.next()}};return result}
 }
