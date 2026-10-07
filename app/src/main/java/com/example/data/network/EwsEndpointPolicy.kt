@@ -9,6 +9,18 @@ object EwsEndpointPolicy {
     const val DEFAULT_PATH = "/EWS/Exchange.asmx"
     const val DEFAULT_ENDPOINT = "https://exchange.uni-giessen.de/EWS/Exchange.asmx"
 
+    fun normalizeUsername(value: String): String {
+        val trimmed = value.trim()
+        require(trimmed.isNotBlank()) { "Account identifier is required." }
+        return when {
+            trimmed.contains("\\") -> trimmed
+            trimmed.contains("@") -> throw IllegalArgumentException(
+                "Use the JLU account identifier, not the email address."
+            )
+            else -> "ad\\$trimmed"
+        }
+    }
+
     fun validate(endpointUrl: String, emailAddress: String? = null): String? {
         val trimmedUrl = endpointUrl.trim()
         if (trimmedUrl.isBlank()) return "EWS endpoint URL is required."
