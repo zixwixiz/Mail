@@ -31,7 +31,10 @@ class EwsProtocolVerifier(
 
     fun executeVerificationFlow(
         host: String = "owa.uni-giessen.de",
-        ewsUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
+        ewsUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
+        username: String? = null,
+        password: String? = null,
+        mailboxEmail: String? = null
     ): Flow<ProtocolVerificationSummary> = flow {
         var summary = ProtocolVerificationSummary(
             targetHost = host,
@@ -97,7 +100,7 @@ class EwsProtocolVerifier(
         // ==========================================
         // GATE 3: EWS SOAP Endpoint Probe
         // ==========================================
-        val gate3Result = testEwsSoapEnvelope(ewsUrl)
+        val gate3Result = testEwsSoapEnvelope(ewsUrl, username, password, mailboxEmail)
 
         summary = summary.copy(
             isVerifying = false,
