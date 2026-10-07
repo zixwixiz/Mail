@@ -371,16 +371,15 @@ fun ProtocolVerificationScreen(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "JLU HRZ Compliance & Security Notice",
+                        text = "Technical security notes"
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "• JLU Gießen stores all mailbox content exclusively on university infrastructure (no Exchange Online).\n" +
-                               "• Official mobile access adheres to university IT regulations; third-party cloud caching is avoided.\n" +
-                               "• Detected authentication mechanisms (Negotiate / NTLM) ensure end-to-end encrypted sessions over TLS 1.3.",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "• The app connects directly to the configured EWS endpoint.\n" +
+                               "• Authentication mechanisms shown here come from the live endpoint challenge.\n" +
+                               "• Verification results describe completed technical checks only; they do not certify university policy compliance.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
