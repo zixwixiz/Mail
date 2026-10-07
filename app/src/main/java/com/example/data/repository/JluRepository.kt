@@ -15,6 +15,9 @@ import com.example.data.model.ProtocolVerificationSummary
 import com.example.data.network.AuthVerificationResult
 import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
+import com.example.data.network.EwsMailboxSyncClient
+import com.example.data.network.EwsCalendarSyncResult
+import com.example.data.network.EwsContactSyncResult
 import com.example.data.network.EwsEndpointPolicy
 import com.example.data.network.EwsProtocolVerifier
 import com.example.data.network.EwsReceiveResult
