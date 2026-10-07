@@ -143,7 +143,8 @@ fun AddAccountDialog(
             Button(
                 onClick = {
                     val id = username.trim()
-                    val email = "$id@uni-giessen.de"
+                    val emailUser = id.substringAfterLast("\\")
+                    val email = "$emailUser@uni-giessen.de"
                     onAddAccount(
                         id,
                         id,
