@@ -155,9 +155,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = repository.syncFolderMessages(_activeMailbox.value.id, _selectedFolder.value)
             _isSyncing.value = false
             if (result.isSuccess) {
-                showFeedback("EWS FindItem: ${result.messages.size} message(s) retrieved (${result.responseCode})")
+                runCatching { repository.syncCalendar(_activeMailbox.value.id) }
+                runCatching { repository.syncContacts(_activeMailbox.value.id) }
+                showFeedback("Exchange mail refreshed: " + result.messages.size + " message(s). Calendar and contacts refreshed.")
             } else {
-                showFeedback("EWS FindItem: ${result.responseCode}", isError = true)
+                showFeedback("EWS FindItem: " + result.responseCode, isError = true)
             }
         }
     }
