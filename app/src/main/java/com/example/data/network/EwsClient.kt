@@ -418,8 +418,8 @@ class EwsClient(
                                     currentRecipients += text
                                 currentTag.equals("DateTimeReceived", ignoreCase = true) ->
                                     currentReceivedMs = parseIsoDateTime(text)
-                                insideBody && currentTag.equals("Body", ignoreCase = true) ->
-                                    currentBody = text
+                                insideBody ->
+                                    currentBody += if (currentBody.isBlank()) text else " $text"
                                 currentTag.equals("IsRead", ignoreCase = true) ->
                                     currentIsRead = text.equals("true", ignoreCase = true)
                                 currentTag.equals("HasAttachments", ignoreCase = true) ->
