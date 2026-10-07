@@ -18,7 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.HttpURLConnection
+import javax.net.ssl.HttpsURLConnection
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLSocketFactory
 
@@ -129,7 +129,7 @@ class EwsProtocolVerifier(
                 it.connect(InetSocketAddress(host, 443), 6000)
                 it.startHandshake()
                 if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
-                    require(HttpURLConnection.getDefaultHostnameVerifier().verify(host, it.session)) {
+                    require(HttpsURLConnection.getDefaultHostnameVerifier().verify(host, it.session)) {
                         "TLS certificate hostname verification failed for $host"
                     }
                 }
