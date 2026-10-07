@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,6 +66,7 @@ import com.example.ui.theme.JluNavy
 import com.example.ui.theme.JluSuccess
 import com.example.ui.theme.JluWarning
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -332,10 +336,21 @@ fun CreateEventDialog(
     onCreate: (title: String, location: String, startEpochMs: Long, endEpochMs: Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var title by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
-    val now = System.currentTimeMillis()
+    var selectedDate by remember { mutableStateOf<Calendar?>(null) }
+    var selectedHour by remember { mutableStateOf<Int?>(null) }
+    var selectedMinute by remember { mutableStateOf<Int?>(null) }
+
+    val canSchedule = title.isNotBlank() && selectedDate != null && selectedHour != null && selectedMinute != null
+    val dateLabel = selectedDate?.let { String.format(Locale.GERMANY, "%1$td.%1$tm.%1$tY", it) } ?: "Choose date"
+    val timeLabel = if (selectedHour != null && selectedMinute != null) {
+        String.format(Locale.GERMANY, "%02d:%02d", selectedHour, selectedMinute)
+    } else {
+        "Choose time"
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -367,7 +382,7 @@ fun CreateEventDialog(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("Event Title (e.g. Master Colloquium)") },
+                label = { Text("Event Title") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("event_title_input")
@@ -378,29 +393,85 @@ fun CreateEventDialog(
             OutlinedTextField(
                 value = location,
                 onValueChange = { location = it },
-                label = { Text("Location / Room (e.g. HBR 14, Raum 204)") },
+                label = { Text("Location / Room") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("event_location_input")
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val now = Calendar.getInstance()
+                        DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                selectedDate = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, day)
+                                }
+                            },
+                            now.get(Calendar.YEAR),
+                            now.get(Calendar.MONTH),
+                            now.get(Calendar.DAY_OF_MONTH)
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(dateLabel)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val now = Calendar.getInstance()
+                        TimePickerDialog(
+                            context,
+                            { _, hour, minute ->
+                                selectedHour = hour
+                                selectedMinute = minute
+                            },
+                            now.get(Calendar.HOUR_OF_DAY),
+                            now.get(Calendar.MINUTE),
+                            true
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(timeLabel)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Events are saved locally in this app; Exchange calendar sync is not implemented yet.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
-                    val start = now + 24 * 3600 * 1000L
-                    val end = start + 2 * 3600 * 1000L
-                    onCreate(title, location, start, end)
+                    val start = selectedDate!!.clone() as Calendar
+                    start.set(Calendar.HOUR_OF_DAY, selectedHour!!)
+                    start.set(Calendar.MINUTE, selectedMinute!!)
+                    start.set(Calendar.SECOND, 0)
+                    start.set(Calendar.MILLISECOND, 0)
+                    onCreate(title.trim(), location.trim(), start.timeInMillis, start.timeInMillis + 60 * 60 * 1000L)
                 },
-                enabled = title.isNotBlank(),
+                enabled = canSchedule,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("save_event_button"),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text("Schedule Event")
+                Text("Save Local Event")
             }
 
             Spacer(modifier = Modifier.height(24.dp))
