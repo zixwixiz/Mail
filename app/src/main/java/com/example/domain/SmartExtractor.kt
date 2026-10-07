@@ -115,7 +115,7 @@ object SmartExtractor {
     }
 
     private fun parseDate(text: String, requireTime: Boolean): ParsedDate? {
-        val match = if (requireTime) explicitDatePattern.find(text) else dateOnlyPattern.find(text)
+        val match = (if (requireTime) explicitDatePattern.find(text) else dateOnlyPattern.find(text))
             ?: return null
 
         val day = match.groupValues[1].toIntOrNull() ?: return null
