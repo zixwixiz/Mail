@@ -118,6 +118,16 @@ class EwsClient(
 
             Log.i(TAG, "EWS CreateItem finished with HTTP $statusCode in ${duration}ms")
 
+            val responseCode = parseEwsResponseCode(responseBody)
+            val messageId = if (statusCode in 200..299 && responseCode == "NoError") {
+                parseEwsCreatedItemId(responseBody)
+            } else {
+                null
+            }
+            val isSuccess = statusCode in 200..299 &&
+                    responseCode == "NoError" &&
+                    !messageId.isNullOrBlank()
+
             val executionLog = EwsExecutionLog(
                 action = "CreateItem ($disposition)",
                 endpointUrl = endpointUrl,
@@ -125,17 +135,19 @@ class EwsClient(
                 responseSoapXml = responseBody,
                 httpStatusCode = statusCode,
                 durationMs = duration,
-                isSuccess = statusCode in 200..299 && parseEwsResponseCode(responseBody) == "NoError"
+                isSuccess = isSuccess,
+                errorMessage = if (!isSuccess && responseCode == "NoError") {
+                    "EWS returned NoError without a created ItemId."
+                } else {
+                    null
+                }
             )
             lastExecutionLog = executionLog
-
-            val isSuccess = executionLog.isSuccess
-            val messageId = if (isSuccess) parseEwsCreatedItemId(responseBody) else null
 
             EwsSendResult(
                 isSuccess = isSuccess,
                 messageId = messageId,
-                responseCode = if (isSuccess) "NoError" else parseEwsResponseCode(responseBody).ifBlank { "HTTP_$statusCode" },
+                responseCode = if (isSuccess) "NoError" else responseCode.ifBlank { "HTTP_$statusCode" },
                 httpStatusCode = statusCode,
                 soapLog = executionLog
             )
