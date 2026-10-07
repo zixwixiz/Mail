@@ -183,8 +183,8 @@ class MailAppRobolectricTest {
 
     @Test
     fun endpointPolicyNormalizesAndValidatesJluAccounts() {
-        assertEquals("ad\\\\u12345", EwsEndpointPolicy.normalizeUsername("u12345"))
-        assertEquals("ad\\\\u12345", EwsEndpointPolicy.normalizeUsername("ad\\\\u12345"))
+        assertEquals("ad\\u12345", EwsEndpointPolicy.normalizeUsername("u12345"))
+        assertEquals("ad\\u12345", EwsEndpointPolicy.normalizeUsername("ad\\u12345"))
         assertTrue(EwsEndpointPolicy.validate(EwsEndpointPolicy.DEFAULT_ENDPOINT, "u12345@uni-giessen.de") == null)
         assertTrue(EwsEndpointPolicy.validate("http://example.com/EWS/Exchange.asmx", "u12345@uni-giessen.de")?.contains("HTTPS") == true)
         assertTrue(EwsEndpointPolicy.validate(EwsEndpointPolicy.DEFAULT_ENDPOINT, "user@example.com")?.contains("uni-giessen.de") == true)
@@ -218,7 +218,7 @@ class MailAppRobolectricTest {
         }
         val result = EwsClient(client).sendMessage(
             endpointUrl = EwsEndpointPolicy.DEFAULT_ENDPOINT,
-            username = "ad\\\\u12345",
+            username = "ad\\u12345",
             password = "password",
             senderEmail = "u12345@uni-giessen.de",
             recipients = listOf("recipient@example.edu"),
