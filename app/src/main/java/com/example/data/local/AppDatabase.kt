@@ -10,7 +10,6 @@ import com.example.data.local.dao.CalendarDao
 import com.example.data.local.dao.ContactDao
 import com.example.data.local.dao.MailDao
 import com.example.data.local.dao.NoteDao
-import com.example.data.local.dao.SyncDao
 import com.example.data.local.dao.VerificationDao
 import com.example.data.local.dao.TaskDao
 import com.example.data.local.entities.CalendarEventEntity
