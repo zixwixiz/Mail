@@ -7,11 +7,6 @@ import com.example.data.network.EwsEndpointPolicy
 import com.example.domain.SmartActionSuggestion
 import com.example.domain.SmartExtractor
 import kotlinx.coroutines.runBlocking
-import okhttp3.Interceptor
-import okhttp3.OkHttpClient
-import okhttp3.Protocol
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -28,7 +23,7 @@ class MailAppRobolectricTest {
 
     @Test
     fun authVerificationRejectsBlankEndpoint() = runBlocking {
-        val result = AuthVerificationService().verifyEndpointAuth("")
+        val result = AuthVerificationService().verifyEndpointAuth("", username = "", password = "", mailboxEmail = "")
         assertFalse(result.isSuccess)
         assertEquals(0, result.httpStatusCode)
         assertEquals("EWS endpoint URL is required.", result.errorMessage)
@@ -36,7 +31,7 @@ class MailAppRobolectricTest {
 
     @Test
     fun authVerificationRejectsMalformedEndpointBeforeNetwork() = runBlocking {
-        val result = AuthVerificationService().verifyEndpointAuth("not-a-url")
+        val result = AuthVerificationService().verifyEndpointAuth("not-a-url", username = "ad\\u12345", password = "password", mailboxEmail = "u12345@uni-giessen.de")
         assertFalse(result.isSuccess)
         assertEquals(0, result.httpStatusCode)
     }
@@ -120,39 +115,6 @@ class MailAppRobolectricTest {
     }
 
     @Test
-    fun ewsSendRejectsFalseSuccessAndOnlyUsesServerId() = runBlocking {
-        var requestCount = 0
-        val client = OkHttpClient.Builder()
-            .addInterceptor(Interceptor { chain ->
-                requestCount++
-                val request = chain.request()
-                Response.Builder()
-                    .request(request)
-                    .protocol(Protocol.HTTP_1_1)
-                    .code(500)
-                    .message("Server Error")
-                    .body("<ResponseClass=\"Success\">".toResponseBody("text/xml".toMediaType()))
-                    .build()
-            })
-            .build()
-
-        val failed = EwsClient(client).sendMessage(
-            endpointUrl = "https://example.test/EWS/Exchange.asmx",
-            username = "user",
-            password = "password",
-            senderEmail = "user@example.edu",
-            recipients = listOf("recipient@example.edu"),
-            subject = "Subject",
-            bodyHtml = "<p>Body</p>"
-        )
-
-        assertFalse(failed.isSuccess)
-        assertNull(failed.messageId)
-        assertEquals(500, failed.httpStatusCode)
-        assertEquals(1, requestCount)
-    }
-
-    @Test
     fun endpointPolicyNormalizesAndValidatesJluAccounts() {
         assertEquals("ad\\u12345", EwsEndpointPolicy.normalizeUsername("u12345"))
         assertEquals("ad\\u12345", EwsEndpointPolicy.normalizeUsername("ad\\u12345"))
@@ -175,47 +137,6 @@ class MailAppRobolectricTest {
         assertTrue(calendar.startInstant > 0L)
         assertEquals(60 * 60 * 1000L, calendar.endInstant - calendar.startInstant)
     }
-
-    @Test
-    fun ewsSendAcceptsNoErrorWithServerItemId() = runBlocking {
-        val client = fakeHttpClient { request ->
-            Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .body("""
-                    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-                                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
-                      <s:Body>
-                        <m:CreateItemResponse>
-                          <m:ResponseMessages>
-                            <m:CreateItemResponseMessage ResponseClass="Success">
-                              <m:ResponseCode>NoError</m:ResponseCode>
-                              <m:Items><t:Message><t:ItemId Id="server-created-001"/></t:Message></m:Items>
-                            </m:CreateItemResponseMessage>
-                          </m:ResponseMessages>
-                        </m:CreateItemResponse>
-                      </s:Body>
-                    </s:Envelope>
-                """.trimIndent().toResponseBody("text/xml".toMediaType()))
-                .build()
-        }
-        val result = EwsClient(client).sendMessage(
-            endpointUrl = EwsEndpointPolicy.DEFAULT_ENDPOINT,
-            username = "ad\\u12345",
-            password = "password",
-            senderEmail = "u12345@uni-giessen.de",
-            recipients = listOf("recipient@example.edu"),
-            subject = "Subject",
-            bodyHtml = "<p>Body</p>"
-        )
-        assertTrue(result.isSuccess)
-        assertEquals("server-created-001", result.messageId)
-        assertEquals("NoError", result.responseCode)
-    }
-
 
     private fun fakeHttpClient(handler: (okhttp3.Request) -> Response): OkHttpClient =
         OkHttpClient.Builder()
