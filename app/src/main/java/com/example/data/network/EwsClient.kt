@@ -178,11 +178,13 @@ class EwsClient(
         maxEntries: Int = 25
     ): EwsReceiveResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        require(maxEntries in 1..100) { "maxEntries must be between 1 and 100." }
         val ewsFolder = when (distinguishedFolderId.uppercase()) {
             "SENT" -> "sentitems"
             "DRAFTS" -> "drafts"
             "TRASH" -> "deleteditems"
-            else -> "inbox"
+            "INBOX" -> "inbox"
+            else -> error("Unsupported EWS mail folder: $distinguishedFolderId")
         }
 
         val soapRequest = buildFindItemSoapEnvelope(folderId = ewsFolder, maxEntries = maxEntries)
