@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 import okhttp3.MediaType.Companion.toMediaType
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [35])
 class MailAppRobolectricTest {
 
     @Test
