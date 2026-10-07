@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -225,9 +224,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiFeedback: StateFlow<UiFeedback?> = _uiFeedback.asStateFlow()
 
     // Pending Sync count
-    val pendingSyncCount: StateFlow<Int> = repository.getPendingSyncCount()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
     // Universal Search
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -248,10 +244,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isCreateNoteOpen = MutableStateFlow(false)
     val isCreateNoteOpen: StateFlow<Boolean> = _isCreateNoteOpen.asStateFlow()
-
-    // Biometric Security Lock Toggle
-    private val _isBiometricLockEnabled = MutableStateFlow(false)
-    val isBiometricLockEnabled: StateFlow<Boolean> = _isBiometricLockEnabled.asStateFlow()
 
     fun selectMailbox(mailbox: MailboxAccount) {
         _activeMailbox.value = mailbox
@@ -522,19 +514,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _searchQuery.value = ""
             _searchResults.value = UniversalSearchResults()
         }
-    }
-
-    // Sync queue flush
-    fun flushSyncQueue() {
-        viewModelScope.launch {
-            repository.clearSyncQueue()
-            showFeedback("Pending local sync records cleared.")
-        }
-    }
-
-    fun toggleBiometricLock(enabled: Boolean) {
-        _isBiometricLockEnabled.value = enabled
-        showFeedback(if (enabled) "Biometric Lock enabled" else "Biometric Lock disabled")
     }
 
     fun setComposeOpen(open: Boolean) { _isComposeOpen.value = open }
