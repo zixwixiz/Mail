@@ -175,6 +175,7 @@ class EwsClient(
         password: String,
         distinguishedFolderId: String = "inbox",
         mailboxId: String = "primary",
+        mailboxEmail: String,
         maxEntries: Int = 25
     ): EwsReceiveResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
@@ -187,7 +188,9 @@ class EwsClient(
             else -> error("Unsupported EWS mail folder: $distinguishedFolderId")
         }
 
-        val soapRequest = buildFindItemSoapEnvelope(folderId = ewsFolder, maxEntries = maxEntries)
+        require(username.isNotBlank() && password.isNotBlank()) { "Username and password are required." }
+        require(mailboxEmail.isNotBlank()) { "Mailbox email is required." }
+        val soapRequest = buildFindItemSoapEnvelope(folderId = ewsFolder, mailboxEmail = mailboxEmail, maxEntries = maxEntries)
         Log.i(TAG, "[$endpointUrl] Executing EWS FindItem for folder '$ewsFolder'...")
 
         val requestBuilder = Request.Builder()
@@ -195,7 +198,8 @@ class EwsClient(
             .post(soapRequest.toRequestBody(XML_MEDIA_TYPE))
             .header("Content-Type", "text/xml; charset=utf-8")
             .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/FindItem")
-            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client; Exchange2019)")
+            .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Client)")
+            .header("X-AnchorMailbox", mailboxEmail)
 
         if (username.isNotBlank() && password.isNotBlank()) {
             val credentials = "$username:$password"
@@ -287,7 +291,11 @@ class EwsClient(
               <soap:Body>
                 <m:CreateItem MessageDisposition="$disposition">
                   <m:SavedItemFolderId>
-                    <t:DistinguishedFolderId Id="$folderId" />
+                    <t:DistinguishedFolderId Id="$folderId">
+                      <t:Mailbox>
+                        <t:EmailAddress>${escapeXml(mailboxEmail.trim())}</t:EmailAddress>
+                      </t:Mailbox>
+                    </t:DistinguishedFolderId>
                   </m:SavedItemFolderId>
                   <m:Items>
                     <t:Message>
@@ -310,7 +318,7 @@ class EwsClient(
         """.trimIndent()
     }
 
-    private fun buildFindItemSoapEnvelope(folderId: String, maxEntries: Int): String {
+    private fun buildFindItemSoapEnvelope(folderId: String, mailboxEmail: String, maxEntries: Int): String {
         return """
             <?xml version="1.0" encoding="utf-8"?>
             <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
