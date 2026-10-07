@@ -1,5 +1,11 @@
 package com.example.domain
 
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.tasks.await
+
 data class TargetLanguage(
     val code: String,
     val displayName: String,
@@ -28,6 +34,56 @@ object TranslationService {
         TargetLanguage("fr", "French (Français)", "🇫🇷"),
         TargetLanguage("es", "Spanish (Español)", "🇪🇸")
     )
+
+    suspend fun translateGermanAcademicTextOnline(
+        text: String,
+        targetLanguage: TargetLanguage
+    ): TranslationResult {
+        if (text.isBlank()) {
+            return TranslationResult(text, text, targetLang = targetLanguage)
+        }
+
+        val targetCode = targetLanguage.code
+        val mlTarget = when (targetCode) {
+            "en" -> TranslateLanguage.ENGLISH
+            "hi" -> TranslateLanguage.HINDI
+            "gu" -> TranslateLanguage.GUJARATI
+            "ar" -> TranslateLanguage.ARABIC
+            "fr" -> TranslateLanguage.FRENCH
+            "es" -> TranslateLanguage.SPANISH
+            else -> null
+        }
+
+        if (mlTarget == null) {
+            return translateGermanAcademicText(text, targetLanguage)
+        }
+
+        val options = TranslatorOptions.Builder()
+            .setSourceLanguage(TranslateLanguage.GERMAN)
+            .setTargetLanguage(mlTarget)
+            .build()
+        val translator = Translation.getClient(options)
+
+        return try {
+            translator.downloadModelIfNeeded(
+                DownloadConditions.Builder()
+                    .requireWifi()
+                    .build()
+            ).await()
+            val translated = translator.translate(text).await()
+            TranslationResult(
+                originalText = text,
+                translatedText = translated,
+                sourceLang = "German (de)",
+                targetLang = targetLanguage
+            )
+        } catch (_: Exception) {
+            // Keep the app useful offline / when the ML model is unavailable.
+            translateGermanAcademicText(text, targetLanguage)
+        } finally {
+            translator.close()
+        }
+    }
 
     fun translateGermanAcademicText(text: String, targetLanguage: TargetLanguage): TranslationResult {
         if (text.isBlank()) {
