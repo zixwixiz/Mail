@@ -272,14 +272,15 @@ fun AddAccountDialog(
                         FilterChip(
                             selected = false,
                             onClick = { },
-                                isSharedMailbox = true
-                                selectedPermission = MailboxPermission.EDITOR
-                            },
+                            enabled = false,
                             label = { Text("Shared Mailbox (OWA only)") },
                             leadingIcon = {
-                                Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(
+                                    Icons.Default.People,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             },
-                            enabled = false,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -287,7 +288,7 @@ fun AddAccountDialog(
                     if (isSharedMailbox) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Shared Mailbox Permissions:",
+                            text = "Shared mailbox access is not supported in this mobile connection.",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold
                         )
