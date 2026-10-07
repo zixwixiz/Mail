@@ -82,7 +82,7 @@ fun NotesScreen(
         ) {
             item {
                 Text(
-                    text = "Exchange Notes & Meeting Logs",
+                    text = "Notes",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
