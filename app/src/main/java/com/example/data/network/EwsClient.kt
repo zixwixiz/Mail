@@ -293,7 +293,7 @@ class EwsClient(
                   <m:SavedItemFolderId>
                     <t:DistinguishedFolderId Id="$folderId">
                       <t:Mailbox>
-                        <t:EmailAddress>${escapeXml(mailboxEmail.trim())}</t:EmailAddress>
+                        <t:EmailAddress>${escapeXml(senderEmail.trim())}</t:EmailAddress>
                       </t:Mailbox>
                     </t:DistinguishedFolderId>
                   </m:SavedItemFolderId>
@@ -343,7 +343,11 @@ class EwsClient(
                   </m:ItemShape>
                   <m:IndexedPageItemView MaxEntriesReturned="$maxEntries" Offset="0" BasePoint="Beginning" />
                   <m:ParentFolderIds>
-                    <t:DistinguishedFolderId Id="$folderId" />
+                    <t:DistinguishedFolderId Id="$folderId">
+                      <t:Mailbox>
+                        <t:EmailAddress>${escapeXml(mailboxEmail.trim())}</t:EmailAddress>
+                      </t:Mailbox>
+                    </t:DistinguishedFolderId>
                   </m:ParentFolderIds>
                 </m:FindItem>
               </soap:Body>
