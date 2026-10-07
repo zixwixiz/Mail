@@ -193,8 +193,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Active Verification Summary State
     private val _verificationSummary = MutableStateFlow(
         ProtocolVerificationSummary(
-            targetHost = "owa.uni-giessen.de",
-            ewsEndpoint = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
+            targetHost = com.example.data.network.EwsEndpointPolicy.DEFAULT_HOST,
+            ewsEndpoint = com.example.data.network.EwsEndpointPolicy.DEFAULT_ENDPOINT,
         )
     )
     val verificationSummary: StateFlow<ProtocolVerificationSummary> = _verificationSummary.asStateFlow()
