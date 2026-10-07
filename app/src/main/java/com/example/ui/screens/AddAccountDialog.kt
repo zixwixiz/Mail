@@ -175,7 +175,7 @@ fun AddAccountDialog(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text("Username / JLU Kennung") },
+                label = { Text("JLU Account ID (Kennung)") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("account_identifier_input"),
@@ -213,7 +213,7 @@ fun AddAccountDialog(
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Enter your JLU account identifier and your complete university email address.",
+                text = "Use the JLU account identifier (Kennung) and enter the complete university email address separately.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
@@ -383,7 +383,7 @@ fun AddAccountDialog(
                             )
                             Text(
                                 text = if (verificationResult.isSuccess)
-                                    "Mechanism: ${verificationResult.selectedMechanism.displayName} (HTTP ${verificationResult.httpStatusCode}). Credentials have not been independently validated."
+                                    "Mailbox access verified for this session via ${verificationResult.selectedMechanism.displayName} (HTTP ${verificationResult.httpStatusCode})."
                                 else
                                     verificationResult.errorMessage ?: "Could not verify credentials",
                                 style = MaterialTheme.typography.bodySmall
