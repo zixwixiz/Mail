@@ -295,7 +295,7 @@ class EwsProtocolVerifier(
                     status = if (passed) GateStatus.PASSED else GateStatus.FAILED,
                     details = detail,
                     latencyMs = System.currentTimeMillis() - startedAt,
-                    rawData = body.take(4000)
+                    rawData = "HTTP " + response.code + " SOAP response received; message content omitted from diagnostics."
                 )
             }
         } catch (e: Exception) {
