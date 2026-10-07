@@ -248,7 +248,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectMailbox(mailbox: MailboxAccount) {
         _activeMailbox.value = mailbox
         _selectedEmail.value = null
-        showFeedback("Switched to ${if (mailbox.isSharedMailbox) "Shared Mailbox: " else ""}${mailbox.displayName}")
+        showFeedback("Switched mailbox: " + mailbox.displayName)
+    }
+
+    fun disconnectActiveMailbox() {
+        val mailboxId = _activeMailbox.value.id
+        if (mailboxId.isBlank()) {
+            showFeedback("No mailbox is connected.", isError = true)
+            return
+        }
+        repository.disconnectMailbox(mailboxId)
+        _activeMailbox.value = MailboxAccount.UNCONFIGURED
+        _selectedFolder.value = "INBOX"
+        _selectedEmail.value = null
+        _smartSuggestions.value = emptyList()
+        _currentTranslation.value = null
+        showFeedback("Mailbox disconnected and session credentials cleared.")
     }
 
     fun selectTab(tab: NavigationTab) {
@@ -286,7 +301,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (_selectedEmail.value?.id == emailId) {
                 _selectedEmail.value = null
             }
-            showFeedback("Message moved to Trash")
+            showFeedback("Message moved to local Trash; the server copy is unchanged.")
         }
     }
 
