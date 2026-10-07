@@ -161,7 +161,7 @@ fun AddAccountDialog(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
+                            text = endpointUrl,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )
