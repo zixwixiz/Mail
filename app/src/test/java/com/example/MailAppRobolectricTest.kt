@@ -9,13 +9,11 @@ import com.example.domain.SmartExtractor
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import okhttp3.MediaType.Companion.toMediaType
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -137,9 +135,4 @@ class MailAppRobolectricTest {
         assertTrue(calendar.startInstant > 0L)
         assertEquals(60 * 60 * 1000L, calendar.endInstant - calendar.startInstant)
     }
-
-    private fun fakeHttpClient(handler: (okhttp3.Request) -> Response): OkHttpClient =
-        OkHttpClient.Builder()
-            .addInterceptor(Interceptor { chain -> handler(chain.request()) })
-            .build()
 }
