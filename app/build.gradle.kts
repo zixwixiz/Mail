@@ -41,6 +41,14 @@ android {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
+  packaging {
+    resources {
+      excludes += "/META-INF/NOTICE.md"
+      excludes += "/META-INF/LICENSE.md"
+      excludes += "/META-INF/mailcap"
+      excludes += "/META-INF/mimetypes.default"
+    }
+  }
   buildFeatures {
     compose = true
     buildConfig = true
