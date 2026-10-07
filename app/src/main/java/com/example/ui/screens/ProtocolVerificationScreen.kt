@@ -161,7 +161,7 @@ fun ProtocolVerificationScreen(
                             Icon(
                                 imageVector = Icons.Default.Security,
                                 contentDescription = null,
-                                tint = if (summary.allGatesPassed || savedVerification != null) JluSuccess else JluWarning,
+                                tint = if (summary.allGatesPassed || (savedVerification?.let { it.gate1Passed && it.gate2Passed && it.gate3Passed } == true)) JluSuccess else JluWarning,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
