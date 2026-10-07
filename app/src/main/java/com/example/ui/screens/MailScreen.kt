@@ -192,6 +192,7 @@ fun MailScreen(
                     } else {
                         IconButton(
                             onClick = onSyncClick,
+                            enabled = activeMailbox.isConfigured,
                             modifier = Modifier.size(24.dp).testTag("sync_ews_button")
                         ) {
                             Icon(
@@ -222,12 +223,12 @@ fun MailScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No messages in $selectedFolder",
+                            text = if (activeMailbox.isConfigured) "No messages in $selectedFolder" else "Connect a mailbox to view messages",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Mailbox: ${activeMailbox.displayName}",
+                            text = if (activeMailbox.isConfigured) "Mailbox: ${activeMailbox.displayName}" else "Use the Add / Connect button above to sign in",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
