@@ -11,7 +11,6 @@ import com.example.data.local.entities.MailMessageEntity
 import com.example.data.local.entities.NoteEntity
 import com.example.data.local.entities.TaskEntity
 import com.example.data.model.EwsAuthMechanism
-import com.example.data.model.GateStatus
 import com.example.data.model.MailboxAccount
 import com.example.data.model.MailboxPermission
 import com.example.data.model.ProtocolVerificationSummary
@@ -111,7 +110,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _activeMailbox.value = newAccount
                 _isAccountVerifying.value = false
                 _isAddAccountOpen.value = false
-                showFeedback("Account '${newAccount.displayName}' verified via ${result.selectedMechanism.displayName} and connected!")
+                showFeedback("EWS endpoint verified (${result.selectedMechanism.displayName}); account added for this session.")
             } catch (e: Exception) {
                 _isAccountVerifying.value = false
                 showFeedback("Failed to add account: ${e.localizedMessage}", isError = true)
@@ -124,6 +123,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     fun syncCurrentFolder() {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Add and verify a mailbox before syncing.", isError = true)
+            return
+        }
         viewModelScope.launch {
             _isSyncing.value = true
             val result = repository.syncFolderMessages(_activeMailbox.value.id, _selectedFolder.value)
@@ -137,7 +141,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Active Mailbox State
-    private val _activeMailbox = MutableStateFlow(MailboxAccount.DEFAULT_PERSONAL)
+    private val _activeMailbox = MutableStateFlow(MailboxAccount.UNCONFIGURED)
     val activeMailbox: StateFlow<MailboxAccount> = _activeMailbox.asStateFlow()
 
     // Navigation Tab
@@ -192,7 +196,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ProtocolVerificationSummary(
             targetHost = "owa.uni-giessen.de",
             ewsEndpoint = "https://owa.uni-giessen.de/EWS/Exchange.asmx",
-            exchangeVersion = "Exchange 2019"
         )
     )
     val verificationSummary: StateFlow<ProtocolVerificationSummary> = _verificationSummary.asStateFlow()
@@ -249,13 +252,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Biometric Security Lock Toggle
     private val _isBiometricLockEnabled = MutableStateFlow(false)
     val isBiometricLockEnabled: StateFlow<Boolean> = _isBiometricLockEnabled.asStateFlow()
-
-    init {
-        // Run initial seed if needed
-        viewModelScope.launch {
-            database.seedInitialData()
-        }
-    }
 
     fun selectMailbox(mailbox: MailboxAccount) {
         _activeMailbox.value = mailbox
@@ -361,7 +357,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (!summary.isVerifying) {
                     if (summary.allGatesPassed) {
                         repository.saveVerificationResult(summary)
-                        val mechanism = summary.verifiedMechanism?.displayName ?: "Negotiate/NTLM"
+                        val mechanism = summary.verifiedMechanism?.displayName ?: summary.detectedMechanisms.joinToString { it.displayName }.ifBlank { "detected mechanisms" }
                         showFeedback("Gate 1, 2, and 3 Verified! Identified Mechanism: $mechanism")
                     } else if (summary.failureReason != null) {
                         showFeedback("Verification Failed: ${summary.failureReason}", isError = true)
@@ -378,7 +374,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Send or draft email
     fun sendEmail(subject: String, recipients: String, body: String, isDraft: Boolean = false) {
-        if (_activeMailbox.value.permission == MailboxPermission.REVIEWER) {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Add and verify a mailbox before composing email.", isError = true)
+            return
+        }
+        if (mailbox.permission == MailboxPermission.REVIEWER) {
             showFeedback("Permission Denied: This shared mailbox is Read-Only (Reviewer).", isError = true)
             return
         }
@@ -527,7 +528,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun flushSyncQueue() {
         viewModelScope.launch {
             repository.clearSyncQueue()
-            showFeedback("Sync queue flushed. Local state synchronized with Exchange.")
+            showFeedback("Pending local sync records cleared.")
         }
     }
 

@@ -8,22 +8,21 @@ import com.example.data.local.entities.MailMessageEntity
 import com.example.data.local.entities.NoteEntity
 import com.example.data.local.entities.SyncQueueEntity
 import com.example.data.local.entities.TaskEntity
-import com.example.data.model.EwsAuthMechanism
 import com.example.data.model.MailboxAccount
 import com.example.data.model.MailboxPermission
 import com.example.data.model.ProtocolVerificationSummary
 import com.example.data.network.AuthVerificationResult
 import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
-import com.example.data.network.EwsExecutionLog
+import com.example.data.network.EwsProtocolVerifier
 import com.example.data.network.EwsReceiveResult
 import com.example.data.network.EwsSendResult
-import com.example.data.network.EwsProtocolVerifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import org.json.JSONObject
 import java.util.UUID
 
 class JluRepository(
@@ -32,15 +31,7 @@ class JluRepository(
     val authVerificationService: AuthVerificationService = AuthVerificationService(),
     val ewsClient: EwsClient = EwsClient()
 ) {
-    // Dynamic list of mailbox accounts
-    private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(
-        listOf(
-            MailboxAccount.DEFAULT_PERSONAL,
-            MailboxAccount.DEFAULT_SHARED_1,
-            MailboxAccount.DEFAULT_SHARED_2,
-            MailboxAccount.DEFAULT_SHARED_3
-        )
-    )
+    private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
     val availableMailboxes: StateFlow<List<MailboxAccount>> = _availableMailboxes.asStateFlow()
 
     suspend fun verifyAndAddAccount(
@@ -53,47 +44,30 @@ class JluRepository(
         endpointUrl: String = AuthVerificationService.DEFAULT_JLU_EWS_ENDPOINT,
         password: String = ""
     ): Pair<MailboxAccount, AuthVerificationResult> {
-        val verifResult = authVerificationService.verifyEndpointAuth(endpointUrl, accountIdentifier)
-        val newAccount = MailboxAccount(
-            id = "acc_${UUID.randomUUID()}",
-            displayName = if (displayName.isNotBlank()) displayName else accountIdentifier,
-            emailAddress = emailAddress,
+        require(accountIdentifier.isNotBlank()) { "Account identifier is required." }
+        require(emailAddress.isNotBlank()) { "Email address is required." }
+        require(password.isNotBlank()) { "Password is required." }
+
+        val verification = authVerificationService.verifyEndpointAuth(endpointUrl, accountIdentifier)
+        check(verification.isSuccess) {
+            verification.errorMessage ?: "EWS authentication challenge verification failed."
+        }
+
+        val account = MailboxAccount(
+            id = "acc_" + UUID.randomUUID(),
+            displayName = displayName.ifBlank { accountIdentifier.trim() },
+            emailAddress = emailAddress.trim(),
             isSharedMailbox = isSharedMailbox,
             permission = permission,
-            department = if (department.isNotBlank()) department else "Justus-Liebig-Universität Gießen",
-            unreadCount = 1,
-            username = accountIdentifier,
+            department = department.ifBlank { "Justus-Liebig-Universität Gießen" },
+            username = accountIdentifier.trim(),
             password = password,
-            endpointUrl = endpointUrl
+            endpointUrl = endpointUrl.trim()
         )
-
-        // Add to list
-        _availableMailboxes.value = _availableMailboxes.value + newAccount
-
-        // Seed welcome email for this newly added account
-        val welcomeMail = MailMessageEntity(
-            id = "mail_${UUID.randomUUID()}",
-            mailboxId = newAccount.id,
-            folder = "INBOX",
-            threadId = "th_welcome_${newAccount.id}",
-            subject = "Willkommen bei JLU Mobile (EWS Verifiziert)",
-            senderName = "JLU HRZ Exchange 2019",
-            senderEmail = "noreply@uni-giessen.de",
-            recipients = newAccount.emailAddress,
-            receivedTimestamp = System.currentTimeMillis(),
-            bodyText = "Ihr JLU-Konto ($accountIdentifier) wurde erfolgreich verifiziert.\n\nEWS Endpoint: $endpointUrl\nVerifizierte Authentifizierung: ${verifResult.selectedMechanism.displayName}\nUnterstützte Mechanismen: ${verifResult.supportedMechanisms.joinToString { it.displayName }}\n\nAlle Postfachinhalte werden synchronisiert.",
-            bodyHtml = "<p>Ihr JLU-Konto (<b>$accountIdentifier</b>) wurde erfolgreich verifiziert.</p><p>EWS Endpoint: <code>$endpointUrl</code><br/>Verifizierte Authentifizierung: <b>${verifResult.selectedMechanism.displayName}</b></p>",
-            isRead = false,
-            isFlagged = true,
-            hasAttachments = false,
-            category = "Konto Verifiziert"
-        )
-        database.mailDao().insert(welcomeMail)
-
-        return Pair(newAccount, verifResult)
+        _availableMailboxes.value = _availableMailboxes.value + account
+        return Pair(account, verification)
     }
 
-    // Mail operations
     fun getMessages(mailboxId: String, folder: String): Flow<List<MailMessageEntity>> =
         database.mailDao().getMessages(mailboxId, folder)
 
@@ -110,11 +84,8 @@ class JluRepository(
         database.mailDao().setFlagState(messageId, isFlagged)
 
     suspend fun deleteMessage(messageId: String) =
-        database.mailDao().delete(messageId)
+        database.mailDao().moveToTrash(messageId)
 
-    /**
-     * Sends email via EWS SOAP CreateItem protocol against https://owa.uni-giessen.de/EWS/Exchange.asmx
-     */
     suspend fun sendOrDraftMail(
         mailboxId: String,
         subject: String,
@@ -122,78 +93,69 @@ class JluRepository(
         bodyText: String,
         isDraft: Boolean
     ): EwsSendResult {
-        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId } ?: MailboxAccount.DEFAULT_PERSONAL
-        val recipientList = recipients.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId }
+            ?: error("Mailbox is not configured.")
+        require(subject.isNotBlank()) { "Subject is required." }
 
-        // Execute real EWS CreateItem SOAP request
-        val ewsResult = ewsClient.sendMessage(
-            endpointUrl = mailbox.endpointUrl.ifBlank { EwsClient.DEFAULT_EWS_ENDPOINT },
+        val recipientList = recipients
+            .split(',', ';')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        require(recipientList.isNotEmpty()) { "At least one recipient is required." }
+
+        val result = ewsClient.sendMessage(
+            endpointUrl = mailbox.endpointUrl,
             username = mailbox.username,
             password = mailbox.password,
             senderEmail = mailbox.emailAddress,
             recipients = recipientList,
-            subject = subject,
-            bodyHtml = "<p>$bodyText</p>",
+            subject = subject.trim(),
+            bodyHtml = "<p>" + escapeHtml(bodyText) + "</p>",
             isDraft = isDraft,
             mailboxId = mailboxId
         )
+        if (!result.isSuccess || result.messageId.isNullOrBlank()) {
+            return result
+        }
 
-        val message = MailMessageEntity(
-            id = ewsResult.messageId ?: "mail_${UUID.randomUUID()}",
-            mailboxId = mailboxId,
-            folder = if (isDraft) "DRAFTS" else "SENT",
-            threadId = "th_${UUID.randomUUID()}",
-            subject = subject,
-            senderName = mailbox.displayName,
-            senderEmail = mailbox.emailAddress,
-            recipients = recipients,
-            receivedTimestamp = System.currentTimeMillis(),
-            bodyText = bodyText,
-            bodyHtml = "<p>$bodyText</p>",
-            isRead = true,
-            isFlagged = false,
-            hasAttachments = false,
-            category = if (mailbox.isSharedMailbox) "Shared Mailbox" else "EWS Sent"
-        )
-        database.mailDao().insert(message)
-
-        // Queue sync operation
-        database.syncDao().queueOperation(
-            SyncQueueEntity(
+        database.mailDao().insert(
+            MailMessageEntity(
+                id = result.messageId,
                 mailboxId = mailboxId,
-                entityType = "MAIL",
-                action = if (isDraft) "CREATE_DRAFT" else "SEND_MESSAGE",
-                payloadJson = "{\"subject\":\"$subject\",\"to\":\"$recipients\",\"ewsResponse\":\"${ewsResult.responseCode}\"}"
+                folder = if (isDraft) "DRAFTS" else "SENT",
+                threadId = "th_" + result.messageId,
+                subject = subject.trim(),
+                senderName = mailbox.displayName,
+                senderEmail = mailbox.emailAddress,
+                recipients = recipientList.joinToString(", "),
+                receivedTimestamp = System.currentTimeMillis(),
+                bodyText = bodyText,
+                bodyHtml = "<p>" + escapeHtml(bodyText) + "</p>",
+                isRead = true,
+                isFlagged = false,
+                hasAttachments = false,
+                category = if (isDraft) "Draft" else "Sent"
             )
         )
-
-        return ewsResult
+        return result
     }
 
-    /**
-     * Fetches live messages from JLU EWS endpoint using SOAP FindItem
-     */
-    suspend fun syncFolderMessages(
-        mailboxId: String,
-        folder: String = "INBOX"
-    ): EwsReceiveResult {
-        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId } ?: MailboxAccount.DEFAULT_PERSONAL
+    suspend fun syncFolderMessages(mailboxId: String, folder: String = "INBOX"): EwsReceiveResult {
+        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId }
+            ?: error("Mailbox is not configured.")
         val result = ewsClient.fetchMessages(
-            endpointUrl = mailbox.endpointUrl.ifBlank { EwsClient.DEFAULT_EWS_ENDPOINT },
+            endpointUrl = mailbox.endpointUrl,
             username = mailbox.username,
             password = mailbox.password,
             distinguishedFolderId = folder,
             mailboxId = mailboxId
         )
-
-        if (result.messages.isNotEmpty()) {
+        if (result.isSuccess && result.messages.isNotEmpty()) {
             database.mailDao().insertAll(result.messages)
         }
-
         return result
     }
 
-    // Calendar operations
     fun getCalendarEvents(mailboxId: String): Flow<List<CalendarEventEntity>> =
         database.calendarDao().getEvents(mailboxId)
 
@@ -204,7 +166,7 @@ class JluRepository(
                 mailboxId = event.mailboxId,
                 entityType = "CALENDAR",
                 action = "CREATE_EVENT",
-                payloadJson = "{\"title\":\"${event.title}\",\"start\":${event.startInstant}}"
+                payloadJson = "{\"title\":" + JSONObject.quote(event.title) + ",\"start\":" + event.startInstant + "}"
             )
         )
     }
@@ -215,7 +177,6 @@ class JluRepository(
     suspend fun deleteCalendarEvent(eventId: String) =
         database.calendarDao().delete(eventId)
 
-    // Tasks operations
     fun getTasks(mailboxId: String): Flow<List<TaskEntity>> =
         database.taskDao().getTasks(mailboxId)
 
@@ -226,78 +187,75 @@ class JluRepository(
                 mailboxId = task.mailboxId,
                 entityType = "TASK",
                 action = "CREATE_TASK",
-                payloadJson = "{\"title\":\"${task.title}\"}"
+                payloadJson = "{\"title\":" + JSONObject.quote(task.title) + "}"
             )
         )
     }
 
     suspend fun toggleTaskComplete(taskId: String, isCompleted: Boolean) {
-        val completedTimestamp = if (isCompleted) System.currentTimeMillis() else null
-        database.taskDao().setCompleteState(taskId, isCompleted, completedTimestamp)
+        database.taskDao().setCompleteState(
+            taskId,
+            isCompleted,
+            if (isCompleted) System.currentTimeMillis() else null
+        )
     }
 
-    suspend fun deleteTask(taskId: String) =
-        database.taskDao().delete(taskId)
+    suspend fun deleteTask(taskId: String) = database.taskDao().delete(taskId)
 
-    // Contacts operations
     fun getContacts(mailboxId: String): Flow<List<ContactEntity>> =
         database.contactDao().getContacts(mailboxId)
 
-    suspend fun addContact(contact: ContactEntity) =
-        database.contactDao().insert(contact)
+    suspend fun addContact(contact: ContactEntity) = database.contactDao().insert(contact)
+    suspend fun deleteContact(contactId: String) = database.contactDao().delete(contactId)
 
-    suspend fun deleteContact(contactId: String) =
-        database.contactDao().delete(contactId)
-
-    // Notes operations
     fun getNotes(mailboxId: String): Flow<List<NoteEntity>> =
         database.noteDao().getNotes(mailboxId)
 
-    suspend fun saveNote(note: NoteEntity) =
-        database.noteDao().insert(note)
+    suspend fun saveNote(note: NoteEntity) = database.noteDao().insert(note)
+    suspend fun deleteNote(noteId: String) = database.noteDao().delete(noteId)
 
-    suspend fun deleteNote(noteId: String) =
-        database.noteDao().delete(noteId)
-
-    // Search operations
     fun searchMail(query: String) = database.mailDao().searchMessages(query)
     fun searchCalendar(query: String) = database.calendarDao().searchEvents(query)
     fun searchTasks(query: String) = database.taskDao().searchTasks(query)
     fun searchContacts(query: String) = database.contactDao().searchContacts(query)
     fun searchNotes(query: String) = database.noteDao().searchNotes(query)
 
-    // Protocol Verification operations
     fun getSavedVerification(): Flow<EndpointVerificationEntity?> =
         database.verificationDao().getVerification()
 
-    fun runProtocolVerificationFlow(
-        host: String,
-        ewsUrl: String
-    ): Flow<ProtocolVerificationSummary> =
+    fun runProtocolVerificationFlow(host: String, ewsUrl: String): Flow<ProtocolVerificationSummary> =
         protocolVerifier.executeVerificationFlow(host, ewsUrl)
 
     suspend fun saveVerificationResult(summary: ProtocolVerificationSummary) {
-        val entity = EndpointVerificationEntity(
-            id = 1,
-            host = summary.targetHost,
-            ewsUrl = summary.ewsEndpoint,
-            gate1Passed = summary.gate1.status.name == "PASSED",
-            gate2Passed = summary.gate2.status.name == "PASSED",
-            gate3Passed = summary.gate3.status.name == "PASSED",
-            verifiedMechanism = summary.verifiedMechanism?.displayName
-                ?: summary.detectedMechanisms.joinToString { it.displayName }.ifEmpty { "NEGOTIATE, NTLM" },
-            challengeHeaders = summary.rawChallengeHeaders.joinToString("\n"),
-            lastVerifiedTimestamp = summary.lastVerifiedTimestamp ?: System.currentTimeMillis(),
-            latencyMs = summary.gate1.latencyMs + summary.gate2.latencyMs + summary.gate3.latencyMs
+        database.verificationDao().saveVerification(
+            EndpointVerificationEntity(
+                id = 1,
+                host = summary.targetHost,
+                ewsUrl = summary.ewsEndpoint,
+                gate1Passed = summary.gate1.status.name == "PASSED",
+                gate2Passed = summary.gate2.status.name == "PASSED",
+                gate3Passed = summary.gate3.status.name == "PASSED",
+                verifiedMechanism = summary.verifiedMechanism?.displayName
+                    ?: summary.detectedMechanisms.joinToString { it.displayName },
+                challengeHeaders = summary.rawChallengeHeaders.joinToString("\n"),
+                lastVerifiedTimestamp = summary.lastVerifiedTimestamp ?: System.currentTimeMillis(),
+                latencyMs = summary.gate1.latencyMs + summary.gate2.latencyMs + summary.gate3.latencyMs
+            )
         )
-        database.verificationDao().saveVerification(entity)
     }
 
-    // Sync operations
     fun getPendingSyncCount(): Flow<Int> = database.syncDao().getPendingCount()
     fun getPendingOperations(): Flow<List<SyncQueueEntity>> = database.syncDao().getPendingOperations()
+
     suspend fun clearSyncQueue() {
-        val pending = database.syncDao().getPendingOperations().firstOrNull() ?: emptyList()
-        pending.forEach { database.syncDao().markComplete(it.id) }
+        getPendingOperations().firstOrNull().orEmpty()
+            .forEach { database.syncDao().markComplete(it.id) }
     }
+
+    private fun escapeHtml(value: String) = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 }

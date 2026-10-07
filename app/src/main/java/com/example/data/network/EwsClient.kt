@@ -13,10 +13,8 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 data class EwsExecutionLog(
@@ -121,17 +119,17 @@ class EwsClient(
                 responseSoapXml = responseBody,
                 httpStatusCode = statusCode,
                 durationMs = duration,
-                isSuccess = statusCode in 200..299 || responseBody.contains("ResponseClass=\"Success\"")
+                isSuccess = statusCode in 200..299 && parseEwsResponseCode(responseBody) == "NoError"
             )
             lastExecutionLog = executionLog
 
             val isSuccess = executionLog.isSuccess
-            val generatedId = "ews_${UUID.randomUUID()}"
+            val messageId = if (isSuccess) parseEwsCreatedItemId(responseBody) else null
 
             EwsSendResult(
                 isSuccess = isSuccess,
-                messageId = generatedId,
-                responseCode = if (isSuccess) "NoError" else "HTTP_$statusCode",
+                messageId = messageId,
+                responseCode = if (isSuccess) "NoError" else parseEwsResponseCode(responseBody).ifBlank { "HTTP_$statusCode" },
                 httpStatusCode = statusCode,
                 soapLog = executionLog
             )
@@ -214,14 +212,14 @@ class EwsClient(
                 responseSoapXml = responseBody,
                 httpStatusCode = statusCode,
                 durationMs = duration,
-                isSuccess = statusCode in 200..299 || parsedMessages.isNotEmpty()
+                isSuccess = statusCode in 200..299 && parseEwsResponseCode(responseBody) == "NoError"
             )
             lastExecutionLog = executionLog
 
             EwsReceiveResult(
                 isSuccess = executionLog.isSuccess,
                 messages = parsedMessages,
-                responseCode = if (executionLog.isSuccess) "NoError" else "HTTP_$statusCode",
+                responseCode = if (executionLog.isSuccess) "NoError" else parseEwsResponseCode(responseBody).ifBlank { "HTTP_$statusCode" },
                 httpStatusCode = statusCode,
                 soapLog = executionLog
             )
@@ -330,12 +328,11 @@ class EwsClient(
         mailboxId: String,
         folderName: String
     ): List<MailMessageEntity> {
-        val messages = mutableListOf<MailMessageEntity>()
-        if (xmlContent.isBlank()) return messages
+        if (xmlContent.isBlank()) return emptyList()
 
+        val messages = mutableListOf<MailMessageEntity>()
         try {
-            val factory = XmlPullParserFactory.newInstance()
-            factory.isNamespaceAware = true
+            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
             val parser = factory.newPullParser()
             parser.setInput(StringReader(xmlContent))
 
@@ -343,81 +340,167 @@ class EwsClient(
             var currentSubject = ""
             var currentSenderName = ""
             var currentSenderEmail = ""
-            var currentReceivedMs = System.currentTimeMillis()
+            val currentRecipients = mutableListOf<String>()
+            var currentReceivedMs = 0L
+            var currentBody = ""
+            var currentBodyType = ""
             var currentIsRead = false
             var currentHasAttachments = false
             var currentId = ""
             var insideMessage = false
+            var insideFrom = false
+            var insideToRecipients = false
+            var insideBody = false
             var currentTag = ""
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 when (eventType) {
                     XmlPullParser.START_TAG -> {
                         currentTag = parser.name
-                        if (currentTag.equals("Message", ignoreCase = true)) {
-                            insideMessage = true
-                            currentSubject = ""
-                            currentSenderName = ""
-                            currentSenderEmail = ""
-                            currentReceivedMs = System.currentTimeMillis()
-                            currentIsRead = false
-                            currentHasAttachments = false
-                            currentId = "ews_${UUID.randomUUID()}"
-                        } else if (insideMessage && currentTag.equals("ItemId", ignoreCase = true)) {
-                            val idAttr = parser.getAttributeValue(null, "Id")
-                            if (!idAttr.isNullOrBlank()) {
-                                currentId = idAttr
+                        when {
+                            currentTag.equals("Message", ignoreCase = true) -> {
+                                insideMessage = true
+                                currentSubject = ""
+                                currentSenderName = ""
+                                currentSenderEmail = ""
+                                currentRecipients.clear()
+                                currentReceivedMs = 0L
+                                currentBody = ""
+                                currentBodyType = ""
+                                currentIsRead = false
+                                currentHasAttachments = false
+                                currentId = ""
+                            }
+                            insideMessage && currentTag.equals("From", ignoreCase = true) -> insideFrom = true
+                            insideMessage && currentTag.equals("ToRecipients", ignoreCase = true) -> insideToRecipients = true
+                            insideMessage && currentTag.equals("Body", ignoreCase = true) -> {
+                                insideBody = true
+                                currentBodyType = parser.getAttributeValue(null, "BodyType").orEmpty()
+                            }
+                            insideMessage && currentTag.equals("ItemId", ignoreCase = true) -> {
+                                currentId = parser.getAttributeValue(null, "Id").orEmpty()
                             }
                         }
                     }
+
                     XmlPullParser.TEXT -> {
-                        val text = parser.text?.trim() ?: ""
-                        if (insideMessage && text.isNotBlank()) {
+                        val text = parser.text?.trim().orEmpty()
+                        if (insideMessage && text.isNotEmpty()) {
                             when {
-                                currentTag.equals("Subject", ignoreCase = true) -> currentSubject = text
-                                currentTag.equals("Name", ignoreCase = true) && currentSenderName.isBlank() -> currentSenderName = text
-                                currentTag.equals("EmailAddress", ignoreCase = true) && currentSenderEmail.isBlank() -> currentSenderEmail = text
-                                currentTag.equals("DateTimeReceived", ignoreCase = true) -> {
+                                currentTag.equals("Subject", ignoreCase = true) ->
+                                    currentSubject = text
+                                insideFrom && currentTag.equals("Name", ignoreCase = true) && currentSenderName.isBlank() ->
+                                    currentSenderName = text
+                                insideFrom && currentTag.equals("EmailAddress", ignoreCase = true) && currentSenderEmail.isBlank() ->
+                                    currentSenderEmail = text
+                                insideToRecipients && currentTag.equals("EmailAddress", ignoreCase = true) ->
+                                    currentRecipients += text
+                                currentTag.equals("DateTimeReceived", ignoreCase = true) ->
                                     currentReceivedMs = parseIsoDateTime(text)
-                                }
-                                currentTag.equals("IsRead", ignoreCase = true) -> currentIsRead = text.equals("true", ignoreCase = true)
-                                currentTag.equals("HasAttachments", ignoreCase = true) -> currentHasAttachments = text.equals("true", ignoreCase = true)
+                                insideBody && currentTag.equals("Body", ignoreCase = true) ->
+                                    currentBody = text
+                                currentTag.equals("IsRead", ignoreCase = true) ->
+                                    currentIsRead = text.equals("true", ignoreCase = true)
+                                currentTag.equals("HasAttachments", ignoreCase = true) ->
+                                    currentHasAttachments = text.equals("true", ignoreCase = true)
                             }
                         }
                     }
+
                     XmlPullParser.END_TAG -> {
-                        if (parser.name.equals("Message", ignoreCase = true) && insideMessage) {
-                            if (currentSubject.isNotBlank() || currentSenderEmail.isNotBlank()) {
-                                val item = MailMessageEntity(
-                                    id = currentId,
-                                    mailboxId = mailboxId,
-                                    folder = folderName,
-                                    threadId = "th_$currentId",
-                                    subject = currentSubject.ifBlank { "(No Subject)" },
-                                    senderName = currentSenderName.ifBlank { currentSenderEmail.ifBlank { "JLU Exchange Sender" } },
-                                    senderEmail = currentSenderEmail.ifBlank { "exchange@uni-giessen.de" },
-                                    recipients = "me@uni-giessen.de",
-                                    receivedTimestamp = currentReceivedMs,
-                                    bodyText = currentSubject,
-                                    bodyHtml = "<p>$currentSubject</p>",
-                                    isRead = currentIsRead,
-                                    isFlagged = false,
-                                    hasAttachments = currentHasAttachments,
-                                    category = "JLU EWS Live"
-                                )
-                                messages.add(item)
+                        when {
+                            parser.name.equals("From", ignoreCase = true) -> insideFrom = false
+                            parser.name.equals("ToRecipients", ignoreCase = true) -> insideToRecipients = false
+                            parser.name.equals("Body", ignoreCase = true) -> insideBody = false
+                            parser.name.equals("Message", ignoreCase = true) && insideMessage -> {
+                                if (currentId.isNotBlank() &&
+                                    (currentSubject.isNotBlank() || currentSenderEmail.isNotBlank())
+                                ) {
+                                    val bodyIsHtml = currentBodyType.equals("HTML", ignoreCase = true)
+                                    messages += MailMessageEntity(
+                                        id = currentId,
+                                        mailboxId = mailboxId,
+                                        folder = folderName,
+                                        threadId = "th_" + currentId,
+                                        subject = currentSubject.ifBlank { "(No Subject)" },
+                                        senderName = currentSenderName,
+                                        senderEmail = currentSenderEmail,
+                                        recipients = currentRecipients.joinToString(", "),
+                                        receivedTimestamp = currentReceivedMs,
+                                        bodyText = if (bodyIsHtml) stripHtml(currentBody) else currentBody,
+                                        bodyHtml = if (bodyIsHtml) currentBody else "",
+                                        isRead = currentIsRead,
+                                        isFlagged = false,
+                                        hasAttachments = currentHasAttachments
+                                    )
+                                }
+                                insideMessage = false
+                                insideFrom = false
+                                insideToRecipients = false
+                                insideBody = false
                             }
-                            insideMessage = false
                         }
                     }
                 }
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "XML parsing of EWS response: ${e.localizedMessage}")
+            Log.w(TAG, "XML parsing of EWS response failed: undefined")
         }
 
         return messages
+    }
+
+    private fun stripHtml(value: String): String =
+        value.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
+
+
+    private fun parseEwsResponseCode(xmlContent: String): String {
+        if (xmlContent.isBlank()) return ""
+        return try {
+            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xmlContent))
+            var currentTag = ""
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> currentTag = parser.name
+                    XmlPullParser.TEXT -> if (currentTag.equals("ResponseCode", ignoreCase = true)) return parser.text.trim()
+                }
+                eventType = parser.next()
+            }
+        } catch (_: Exception) {
+            return ""
+        }
+        return ""
+    }
+
+    private fun parseEwsCreatedItemId(xmlContent: String): String? {
+        if (xmlContent.isBlank()) return null
+        return try {
+            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xmlContent))
+            var eventType = parser.eventType
+            var inItems = false
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        if (parser.name.equals("Items", ignoreCase = true)) inItems = true
+                        if (inItems && parser.name.equals("ItemId", ignoreCase = true)) {
+                            val id = parser.getAttributeValue(null, "Id")
+                            if (!id.isNullOrBlank()) return id
+                        }
+                    }
+                    XmlPullParser.END_TAG -> if (parser.name.equals("Items", ignoreCase = true)) inItems = false
+                }
+                eventType = parser.next()
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun escapeXml(input: String): String {
@@ -433,9 +516,9 @@ class EwsClient(
             val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
                 timeZone = TimeZone.getTimeZone("UTC")
             }
-            format.parse(isoString.substringBefore("Z").substringBefore("."))?.time ?: System.currentTimeMillis()
+            format.parse(isoString.substringBefore("Z").substringBefore("."))?.time ?: 0L
         } catch (_: Exception) {
-            System.currentTimeMillis()
+            0L
         }
     }
 }

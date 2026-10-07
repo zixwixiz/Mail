@@ -171,7 +171,7 @@ fun JluMobileApp(viewModel: MainViewModel) {
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             // Status indicator for Gate Verification
-                            val isVerified = verificationSummary.allGatesPassed || (savedVerification != null)
+                            val isVerified = verificationSummary.allGatesPassed || (savedVerification?.let { it.gate1Passed && it.gate2Passed && it.gate3Passed } == true)
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)

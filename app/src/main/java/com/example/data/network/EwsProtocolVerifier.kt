@@ -5,7 +5,6 @@ import com.example.data.model.GateStatus
 import com.example.data.model.GateStepResult
 import com.example.data.model.ProtocolVerificationSummary
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -16,7 +15,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLSocketFactory
 
@@ -43,8 +41,7 @@ class EwsProtocolVerifier(
         // ==========================================
         // GATE 1: Network, DNS & TLS Handshake
         // ==========================================
-        val gate1Start = System.currentTimeMillis()
-        val gate1Result = testNetworkAndTls(host, gate1Start)
+        val gate1Result = testNetworkAndTls(host)
         val gate1Passed = gate1Result.status == GateStatus.PASSED
 
         if (!gate1Passed) {
@@ -68,8 +65,7 @@ class EwsProtocolVerifier(
         // ==========================================
         // GATE 2: WWW-Authenticate Header Inspection
         // ==========================================
-        val gate2Start = System.currentTimeMillis()
-        val gate2Result = inspectAuthChallenges(ewsUrl, gate2Start)
+        val gate2Result = inspectAuthChallenges(ewsUrl)
         val gate2Passed = gate2Result.stepResult.status == GateStatus.PASSED
 
         if (!gate2Passed) {
@@ -83,7 +79,7 @@ class EwsProtocolVerifier(
             return@flow
         }
 
-        val primaryMechanism = gate2Result.mechanisms.firstOrNull() ?: EwsAuthMechanism.NEGOTIATE
+        val primaryMechanism = gate2Result.mechanisms.first()
 
         summary = summary.copy(
             gate2 = gate2Result.stepResult,
@@ -91,54 +87,56 @@ class EwsProtocolVerifier(
             rawChallengeHeaders = gate2Result.rawHeaders,
             verifiedMechanism = primaryMechanism,
             httpStatusCode = gate2Result.httpStatus,
-            gate3 = summary.gate3.copy(status = GateStatus.RUNNING, details = "Testing EWS SOAP envelope structure against ${primaryMechanism.displayName}...")
+            gate3 = summary.gate3.copy(status = GateStatus.RUNNING, details = "Sending a harmless GetFolder SOAP request to the EWS endpoint.")
         )
         emit(summary)
 
         // ==========================================
-        // GATE 3: EWS SOAP Operation (GetFolder Inbox)
+        // GATE 3: EWS SOAP Endpoint Probe
         // ==========================================
-        val gate3Start = System.currentTimeMillis()
-        val gate3Result = testEwsSoapEnvelope(ewsUrl, primaryMechanism, gate3Start)
+        val gate3Result = testEwsSoapEnvelope(ewsUrl)
 
         summary = summary.copy(
             isVerifying = false,
             gate3 = gate3Result,
-            lastVerifiedTimestamp = System.currentTimeMillis()
+            lastVerifiedTimestamp = if (gate3Result.status == GateStatus.PASSED) System.currentTimeMillis() else null,
+            failureReason = gate3Result.details.takeUnless { gate3Result.status == GateStatus.PASSED }
         )
         emit(summary)
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun testNetworkAndTls(host: String, startTime: Long): GateStepResult = withContext(Dispatchers.IO) {
+    private suspend fun testNetworkAndTls(host: String): GateStepResult = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         try {
-            val addresses = InetAddress.getAllByName(host)
+            val addresses = java.net.InetAddress.getAllByName(host)
+            require(addresses.isNotEmpty()) { "DNS returned no addresses for " + host }
             val ipList = addresses.joinToString(", ") { it.hostAddress }
 
-            // Test TCP 443 socket connection
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(addresses[0], 443), 6000)
-                val latency = System.currentTimeMillis() - startTime
+            val socket = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket() as javax.net.ssl.SSLSocket
+            socket.use {
+                it.soTimeout = 6000
+                it.connect(InetSocketAddress(addresses.first(), 443), 6000)
+                it.startHandshake()
                 GateStepResult(
                     gateNumber = 1,
                     title = "Gate 1 — Network & TLS 443",
-                    description = "DNS & TLS 443 Connection",
+                    description = "DNS, TCP, and TLS handshake",
                     status = GateStatus.PASSED,
-                    details = "Host resolved to: $ipList\nTCP connection to port 443 succeeded. TLS handshake verified.",
-                    latencyMs = latency,
-                    rawData = "IP: $ipList\nPort: 443/TCP\nStatus: CONNECTED"
+                    details = "Resolved " + host + " to: " + ipList + "\nTCP 443 connected and TLS handshake completed.",
+                    latencyMs = System.currentTimeMillis() - startedAt,
+                    rawData = "IP: " + ipList + "\nPort: 443/TCP\nTLS: " + it.session.protocol +
+                            "\nCipher: " + it.session.cipherSuite
                 )
             }
         } catch (e: Exception) {
-            // If DNS/network isn't reachable in test container without external internet, provide clear diagnosable feedback
-            val latency = System.currentTimeMillis() - startTime
             GateStepResult(
                 gateNumber = 1,
                 title = "Gate 1 — Network & TLS 443",
-                description = "DNS & TLS 443 Connection",
-                status = GateStatus.PASSED, // Allow graceful simulation if offline container
-                details = "Simulated verification for $host: Port 443 TLS 1.3 reachable.\n(Local check error: ${e.message ?: "fallback"})",
-                latencyMs = latency.coerceAtLeast(35),
-                rawData = "Resolved IP: 134.176.28.14 (JLU HRZ Subnet)\nProtocol: TLSv1.3\nPort: 443"
+                description = "DNS, TCP, and TLS handshake",
+                status = GateStatus.FAILED,
+                details = "Network/TLS verification failed: " +
+                        (e.localizedMessage ?: e.javaClass.simpleName),
+                latencyMs = System.currentTimeMillis() - startedAt
             )
         }
     }
@@ -150,99 +148,76 @@ class EwsProtocolVerifier(
         val httpStatus: Int
     )
 
-    private suspend fun inspectAuthChallenges(ewsUrl: String, startTime: Long): Gate2InspectionResult = withContext(Dispatchers.IO) {
+    private suspend fun inspectAuthChallenges(ewsUrl: String): Gate2InspectionResult = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         try {
             val request = Request.Builder()
                 .url(ewsUrl)
-                .head() // Probe unauthenticated
-                .header("User-Agent", "JLU-Mobile-Android/1.0 (Exchange2019)")
+                .head()
+                .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Auth Verification)")
                 .build()
 
-            val response = okHttpClient.newCall(request).execute()
-            val latency = System.currentTimeMillis() - startTime
-            val statusCode = response.code
+            okHttpClient.newCall(request).execute().use { response ->
+                val headers = response.headers("WWW-Authenticate")
+                val mechanisms = headers
+                    .map(EwsAuthMechanism::fromHeaderValue)
+                    .distinct()
+                    .filter { it != EwsAuthMechanism.UNKNOWN }
 
-            // Extract all WWW-Authenticate headers (there can be multiple)
-            val authHeaders = response.headers("WWW-Authenticate")
-            val mechanisms = authHeaders.map { EwsAuthMechanism.fromHeaderValue(it) }.distinct()
-
-            if (authHeaders.isNotEmpty() && statusCode == 401) {
-                val headerSummary = authHeaders.joinToString("\n") { "• WWW-Authenticate: $it" }
-                val details = "HTTP $statusCode Unauthorized (Expected Challenge Response)\n" +
-                        "Server offers ${mechanisms.size} authentication mechanisms:\n$headerSummary\n\n" +
-                        "Identified: ${mechanisms.joinToString { it.displayName }}"
+                if (response.code == 401 && mechanisms.isNotEmpty()) {
+                    return@withContext Gate2InspectionResult(
+                        stepResult = GateStepResult(
+                            gateNumber = 2,
+                            title = "Gate 2 — Auth Challenge (WWW-Authenticate)",
+                            description = "Authentication challenge inspection",
+                            status = GateStatus.PASSED,
+                            details = "HTTP 401 challenge received. Recognized mechanisms: " +
+                                    mechanisms.joinToString { it.displayName },
+                            latencyMs = System.currentTimeMillis() - startedAt,
+                            rawData = headers.joinToString("\n")
+                        ),
+                        mechanisms = mechanisms,
+                        rawHeaders = headers,
+                        httpStatus = response.code
+                    )
+                }
 
                 Gate2InspectionResult(
                     stepResult = GateStepResult(
                         gateNumber = 2,
                         title = "Gate 2 — Auth Challenge (WWW-Authenticate)",
-                        description = "Authentication Challenge Inspection",
-                        status = GateStatus.PASSED,
-                        details = details,
-                        latencyMs = latency,
-                        rawData = authHeaders.joinToString("\n")
+                        description = "Authentication challenge inspection",
+                        status = GateStatus.FAILED,
+                        details = "Expected HTTP 401 with recognized WWW-Authenticate headers; received HTTP " +
+                                response.code + ".",
+                        latencyMs = System.currentTimeMillis() - startedAt,
+                        rawData = headers.joinToString("\n")
                     ),
                     mechanisms = mechanisms,
-                    rawHeaders = authHeaders,
-                    httpStatus = statusCode
+                    rawHeaders = headers,
+                    httpStatus = response.code
                 )
-            } else {
-                // If the server answered with 200, 302, or other, or offline fallback:
-                fallbackGate2(ewsUrl, latency, statusCode, authHeaders)
             }
         } catch (e: Exception) {
-            val latency = System.currentTimeMillis() - startTime
-            fallbackGate2(ewsUrl, latency, 401, emptyList(), e.localizedMessage)
+            Gate2InspectionResult(
+                stepResult = GateStepResult(
+                    gateNumber = 2,
+                    title = "Gate 2 — Auth Challenge (WWW-Authenticate)",
+                    description = "Authentication challenge inspection",
+                    status = GateStatus.FAILED,
+                    details = "Authentication challenge request failed: " +
+                            (e.localizedMessage ?: e.javaClass.simpleName),
+                    latencyMs = System.currentTimeMillis() - startedAt
+                ),
+                mechanisms = emptyList(),
+                rawHeaders = emptyList(),
+                httpStatus = 0
+            )
         }
     }
 
-    private fun fallbackGate2(
-        ewsUrl: String,
-        latency: Long,
-        statusCode: Int,
-        authHeaders: List<String>,
-        errorMsg: String? = null
-    ): Gate2InspectionResult {
-        // Exchange 2019 standard challenges according to JLU HRZ specification
-        val simulatedHeaders = listOf(
-            "Negotiate",
-            "NTLM",
-            "Basic realm=\"owa.uni-giessen.de\""
-        )
-        val mechanisms = listOf(
-            EwsAuthMechanism.NEGOTIATE,
-            EwsAuthMechanism.NTLM,
-            EwsAuthMechanism.BASIC
-        )
-
-        val details = "HTTP 401 Unauthorized (Verified Exchange Challenge Response)\n" +
-                "Detected standard JLU Exchange 2019 mechanisms:\n" +
-                simulatedHeaders.joinToString("\n") { "• WWW-Authenticate: $it" } +
-                (if (errorMsg != null) "\n(Simulated for container environment; error: $errorMsg)" else "")
-
-        return Gate2InspectionResult(
-            stepResult = GateStepResult(
-                gateNumber = 2,
-                title = "Gate 2 — Auth Challenge (WWW-Authenticate)",
-                description = "Authentication Challenge Inspection",
-                status = GateStatus.PASSED,
-                details = details,
-                latencyMs = latency.coerceAtLeast(64),
-                rawData = simulatedHeaders.joinToString("\n")
-            ),
-            mechanisms = mechanisms,
-            rawHeaders = simulatedHeaders,
-            httpStatus = 401
-        )
-    }
-
-    private suspend fun testEwsSoapEnvelope(
-        ewsUrl: String,
-        mechanism: EwsAuthMechanism,
-        startTime: Long
-    ): GateStepResult = withContext(Dispatchers.IO) {
-        val latency = System.currentTimeMillis() - startTime + 85
-        // Harmless SOAP envelope for GetFolder Inbox
+    private suspend fun testEwsSoapEnvelope(ewsUrl: String): GateStepResult = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         val soapPayload = """
             <?xml version="1.0" encoding="utf-8"?>
             <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -260,16 +235,48 @@ class EwsProtocolVerifier(
             </soap:Envelope>
         """.trimIndent()
 
-        GateStepResult(
-            gateNumber = 3,
-            title = "Gate 3 — EWS SOAP Envelope Operation",
-            description = "Harmless EWS GetFolder Envelope Probe",
-            status = GateStatus.PASSED,
-            details = "EWS SOAP XML schema accepted by Exchange 2019 handler.\n" +
-                    "Endpoint correctly processes Exchange2016/Exchange2019 RequestServerVersion schema.\n" +
-                    "Verified scheme '${mechanism.displayName}' is ready for active session binding.",
-            latencyMs = latency,
-            rawData = "SOAP Action: http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder\nResult: XML Handler Valid"
-        )
+        try {
+            val request = Request.Builder()
+                .url(ewsUrl)
+                .post(soapPayload.toRequestBody("text/xml; charset=utf-8".toMediaType()))
+                .header("Content-Type", "text/xml; charset=utf-8")
+                .header("SOAPAction", "http://schemas.microsoft.com/exchange/services/2006/messages/GetFolder")
+                .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS SOAP Verification)")
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                val accepted = response.code in 200..299 || response.code == 401
+                val detail = when {
+                    response.code in 200..299 ->
+                        "EWS SOAP endpoint accepted the request (HTTP " + response.code + ")."
+                    response.code == 401 ->
+                        "EWS SOAP endpoint received the SOAP request and returned an authentication challenge (HTTP 401)."
+                    else ->
+                        "EWS SOAP endpoint returned HTTP " + response.code + "."
+                }
+
+                GateStepResult(
+                    gateNumber = 3,
+                    title = "Gate 3 — EWS SOAP Endpoint Probe",
+                    description = "Harmless GetFolder SOAP request",
+                    status = if (accepted) GateStatus.PASSED else GateStatus.FAILED,
+                    details = detail,
+                    latencyMs = System.currentTimeMillis() - startedAt,
+                    rawData = body.take(4000)
+                )
+            }
+        } catch (e: Exception) {
+            GateStepResult(
+                gateNumber = 3,
+                title = "Gate 3 — EWS SOAP Endpoint Probe",
+                description = "Harmless GetFolder SOAP request",
+                status = GateStatus.FAILED,
+                details = "EWS SOAP request failed: " +
+                        (e.localizedMessage ?: e.javaClass.simpleName),
+                latencyMs = System.currentTimeMillis() - startedAt
+            )
+        }
     }
+
 }

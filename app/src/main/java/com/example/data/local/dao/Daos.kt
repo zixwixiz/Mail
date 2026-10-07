@@ -43,8 +43,8 @@ interface MailDao {
     @Query("UPDATE mail_messages SET isFlagged = :isFlagged WHERE id = :id")
     suspend fun setFlagState(id: String, isFlagged: Boolean)
 
-    @Query("DELETE FROM mail_messages WHERE id = :id")
-    suspend fun delete(id: String)
+    @Query("UPDATE mail_messages SET folder = 'TRASH' WHERE id = :id")
+    suspend fun moveToTrash(id: String)
 }
 
 @Dao

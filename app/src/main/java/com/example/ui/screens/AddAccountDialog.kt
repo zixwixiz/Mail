@@ -176,7 +176,6 @@ fun AddAccountDialog(
                 value = username,
                 onValueChange = { username = it },
                 label = { Text("Username / JLU Kennung") },
-                placeholder = { Text("s-kennung (e.g. s1234567) or staff username") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("account_identifier_input"),
@@ -193,7 +192,6 @@ fun AddAccountDialog(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
-                placeholder = { Text("Your JLU network / email password") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("account_password_input"),
@@ -215,7 +213,7 @@ fun AddAccountDialog(
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Only username and password are required. Your university address will automatically be configured as ${if (username.contains("@")) username else if (username.isNotBlank()) "$username@uni-giessen.de" else "<username>@uni-giessen.de"}.",
+                text = if (username.isBlank()) "Enter your JLU username or staff account. The university address will be derived automatically." else "JLU email: " + if (username.contains("@")) username else "$username@uni-giessen.de",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
@@ -312,7 +310,6 @@ fun AddAccountDialog(
                         value = customDisplayName,
                         onValueChange = { customDisplayName = it },
                         label = { Text("Custom Display Name (Optional)") },
-                        placeholder = { Text("e.g. Student Account or Office Name") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("account_display_name_input"),
@@ -325,7 +322,6 @@ fun AddAccountDialog(
                         value = customEmail,
                         onValueChange = { customEmail = it },
                         label = { Text("Custom Email Address (Optional)") },
-                        placeholder = { Text("Defaults to $username@uni-giessen.de") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("account_email_input"),
@@ -338,7 +334,6 @@ fun AddAccountDialog(
                         value = customDepartment,
                         onValueChange = { customDepartment = it },
                         label = { Text("Faculty / Department (Optional)") },
-                        placeholder = { Text("e.g. FB 07, HRZ, Fachschaft...") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -382,13 +377,13 @@ fun AddAccountDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = if (verificationResult.isSuccess) "EWS Authentication Verified" else "Verification Failed",
+                                text = if (verificationResult.isSuccess) "EWS Endpoint Verified" else "Verification Failed",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = if (verificationResult.isSuccess)
-                                    "Mechanism: ${verificationResult.selectedMechanism.displayName} (HTTP ${verificationResult.httpStatusCode})"
+                                    "Mechanism: ${verificationResult.selectedMechanism.displayName} (HTTP ${verificationResult.httpStatusCode}). Credentials have not been independently validated."
                                 else
                                     verificationResult.errorMessage ?: "Could not verify credentials",
                                 style = MaterialTheme.typography.bodySmall
@@ -417,7 +412,7 @@ fun AddAccountDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Direct TLS connection to owa.uni-giessen.de with Zero-Logging security guarantee.",
+                        text = "Credentials stay in the current app session and are sent only to the configured EWS endpoint.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -112,7 +112,19 @@ fun MailboxSelectorBar(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    if (activeMailbox.isSharedMailbox) {
+                    if (!activeMailbox.isConfigured) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Text(
+                                text = "Not connected",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    } else if (activeMailbox.isSharedMailbox) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = JluWarning.copy(alpha = 0.2f)
@@ -139,7 +151,7 @@ fun MailboxSelectorBar(
                     }
                 }
                 Text(
-                    text = "${activeMailbox.emailAddress} • ${activeMailbox.permission.label}",
+                    text = if (activeMailbox.isConfigured) "${activeMailbox.emailAddress} • ${activeMailbox.permission.label}" else "Connect a verified JLU mailbox to continue",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

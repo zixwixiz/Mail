@@ -22,10 +22,6 @@ data class AuthVerificationResult(
     val errorMessage: String? = null
 )
 
-/**
- * Service to connect to the JLU EWS endpoint, intercept the WWW-Authenticate header,
- * and log the supported authentication mechanisms (NTLM, Negotiate, Basic, etc.) for protocol verification.
- */
 class AuthVerificationService(
     private val client: OkHttpClient = createVerificationHttpClient()
 ) {
@@ -34,163 +30,147 @@ class AuthVerificationService(
         const val DEFAULT_JLU_EWS_ENDPOINT = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
         const val DEFAULT_JLU_OWA_HOST = "owa.uni-giessen.de"
 
-        fun createVerificationHttpClient(): OkHttpClient {
-            return OkHttpClient.Builder()
+        fun createVerificationHttpClient(): OkHttpClient =
+            OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .followRedirects(false)
                 .addNetworkInterceptor(WwwAuthenticateLoggingInterceptor())
                 .build()
-        }
     }
 
-    /**
-     * Interceptor that intercepts and logs HTTP response headers, focusing on WWW-Authenticate
-     */
     class WwwAuthenticateLoggingInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
-            Log.d(TAG, "--> Probing JLU EWS Endpoint: ${request.method} ${request.url}")
-
             val response = chain.proceed(request)
-            Log.d(TAG, "<-- Response status code: ${response.code} from ${request.url}")
-
             val authHeaders = response.headers("WWW-Authenticate")
-            if (authHeaders.isNotEmpty()) {
-                Log.i(TAG, "Intercepted ${authHeaders.size} WWW-Authenticate header(s):")
-                authHeaders.forEachIndexed { index, headerValue ->
-                    Log.i(TAG, "  [$index] WWW-Authenticate: $headerValue")
-                }
+            if (authHeaders.isEmpty()) {
+                Log.w(TAG, "No WWW-Authenticate header found (HTTP ${response.code})")
             } else {
-                Log.w(TAG, "No WWW-Authenticate header found in response (HTTP ${response.code})")
+                authHeaders.forEach { Log.i(TAG, "WWW-Authenticate: $it") }
             }
-
             return response
         }
     }
 
-    /**
-     * Connects to the JLU EWS endpoint, intercepts WWW-Authenticate challenges,
-     * and logs the supported authentication mechanisms (NTLM, Negotiate, Basic) for protocol verification.
-     */
     suspend fun verifyEndpointAuth(
         endpointUrl: String = DEFAULT_JLU_EWS_ENDPOINT,
         userAccountIdentifier: String? = null
     ): AuthVerificationResult = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
+        val startedAt = System.currentTimeMillis()
         val logs = mutableListOf<String>()
 
-        fun log(msg: String, isWarning: Boolean = false) {
-            logs.add(msg)
-            if (isWarning) {
-                Log.w(TAG, msg)
-            } else {
-                Log.i(TAG, msg)
-            }
+        fun log(message: String, warning: Boolean = false) {
+            logs += message
+            if (warning) Log.w(TAG, message) else Log.i(TAG, message)
         }
 
-        log("Initiating protocol verification against JLU EWS endpoint: $endpointUrl")
-        if (!userAccountIdentifier.isNullOrBlank()) {
-            log("Account identifier to verify: $userAccountIdentifier")
+        if (endpointUrl.isBlank()) {
+            return@withContext AuthVerificationResult(
+                isSuccess = false,
+                endpointUrl = endpointUrl,
+                httpStatusCode = 0,
+                rawWwwAuthenticateHeaders = emptyList(),
+                supportedMechanisms = emptyList(),
+                selectedMechanism = EwsAuthMechanism.UNKNOWN,
+                latencyMs = 0,
+                diagnosticLogs = listOf("EWS endpoint URL is empty."),
+                errorMessage = "EWS endpoint URL is required."
+            )
         }
 
+        log("Probing EWS endpoint: $endpointUrl")
         try {
             val request = Request.Builder()
                 .url(endpointUrl)
-                .head() // Probe unauthenticated to trigger 401 challenge
-                .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS AuthVerificationService; Exchange2019)")
+                .head()
+                .header("User-Agent", "JLU-Mobile-Android/1.0 (EWS Auth Verification)")
                 .build()
 
-            val response = client.newCall(request).execute()
-            val latency = System.currentTimeMillis() - startTime
-            val statusCode = response.code
+            client.newCall(request).execute().use { response ->
+                val latency = System.currentTimeMillis() - startedAt
+                val statusCode = response.code
+                val rawHeaders = response.headers("WWW-Authenticate")
+                val mechanisms = rawHeaders
+                    .map(EwsAuthMechanism::fromHeaderValue)
+                    .distinct()
 
-            log("Received HTTP $statusCode from server in ${latency}ms")
+                log("Received HTTP $statusCode in ${latency}ms")
+                rawHeaders.forEach { log("WWW-Authenticate: $it") }
 
-            // Intercept all WWW-Authenticate header values
-            val rawAuthHeaders = response.headers("WWW-Authenticate")
-            val mechanisms = rawAuthHeaders.map { EwsAuthMechanism.fromHeaderValue(it) }.distinct()
-
-            log("Intercepted ${rawAuthHeaders.size} WWW-Authenticate header(s):")
-            rawAuthHeaders.forEach { header ->
-                log("  • WWW-Authenticate: $header")
-            }
-
-            if (mechanisms.isNotEmpty()) {
-                log("Supported authentication mechanisms identified by JLU server:")
-                mechanisms.forEach { mech ->
-                    log("  ✓ ${mech.displayName}: ${mech.description}")
+                if (statusCode != 401) {
+                    return@withContext AuthVerificationResult(
+                        isSuccess = false,
+                        endpointUrl = endpointUrl,
+                        httpStatusCode = statusCode,
+                        rawWwwAuthenticateHeaders = rawHeaders,
+                        supportedMechanisms = mechanisms,
+                        selectedMechanism = mechanisms.firstOrNull() ?: EwsAuthMechanism.UNKNOWN,
+                        latencyMs = latency,
+                        diagnosticLogs = logs,
+                        errorMessage = "Expected HTTP 401 authentication challenge, received HTTP $statusCode."
+                    )
                 }
 
-                val selected = when {
-                    mechanisms.contains(EwsAuthMechanism.NEGOTIATE) -> EwsAuthMechanism.NEGOTIATE
-                    mechanisms.contains(EwsAuthMechanism.NTLM) -> EwsAuthMechanism.NTLM
-                    mechanisms.contains(EwsAuthMechanism.BASIC) -> EwsAuthMechanism.BASIC
-                    else -> mechanisms.first()
+                if (mechanisms.isEmpty() || mechanisms.any { it == EwsAuthMechanism.UNKNOWN }) {
+                    return@withContext AuthVerificationResult(
+                        isSuccess = false,
+                        endpointUrl = endpointUrl,
+                        httpStatusCode = statusCode,
+                        rawWwwAuthenticateHeaders = rawHeaders,
+                        supportedMechanisms = mechanisms,
+                        selectedMechanism = mechanisms.firstOrNull() ?: EwsAuthMechanism.UNKNOWN,
+                        latencyMs = latency,
+                        diagnosticLogs = logs,
+                        errorMessage = "The endpoint returned HTTP 401 with no fully recognized authentication scheme."
+                    )
                 }
 
-                log("Selected optimal mechanism for account binding: ${selected.displayName}")
+                if (EwsAuthMechanism.BASIC !in mechanisms) {
+                    return@withContext AuthVerificationResult(
+                        isSuccess = false,
+                        endpointUrl = endpointUrl,
+                        httpStatusCode = statusCode,
+                        rawWwwAuthenticateHeaders = rawHeaders,
+                        supportedMechanisms = mechanisms,
+                        selectedMechanism = mechanisms.first(),
+                        latencyMs = latency,
+                        diagnosticLogs = logs,
+                        errorMessage = "The endpoint does not advertise Basic authentication, which this client requires for EWS requests."
+                    )
+                }
+
+                val selected = EwsAuthMechanism.BASIC
+
+
+                log("Selected mechanism: ${selected.displayName}")
 
                 AuthVerificationResult(
                     isSuccess = true,
                     endpointUrl = endpointUrl,
                     httpStatusCode = statusCode,
-                    rawWwwAuthenticateHeaders = rawAuthHeaders,
+                    rawWwwAuthenticateHeaders = rawHeaders,
                     supportedMechanisms = mechanisms,
                     selectedMechanism = selected,
                     latencyMs = latency,
                     diagnosticLogs = logs
                 )
-            } else {
-                // Handle fallback if running in offline container environment
-                log("Server response did not include standard 401 WWW-Authenticate headers. Invoking JLU Exchange 2019 fallback verification.", true)
-                generateJluExchange2019FallbackResult(endpointUrl, latency, logs)
             }
         } catch (e: Exception) {
-            val latency = System.currentTimeMillis() - startTime
-            log("Network exception during connection: ${e.localizedMessage}", true)
-            log("Applying verified JLU HRZ Exchange 2019 specifications profile for offline environment.", false)
-            generateJluExchange2019FallbackResult(endpointUrl, latency, logs, e.localizedMessage)
+            val latency = System.currentTimeMillis() - startedAt
+            val error = e.localizedMessage ?: e.javaClass.simpleName
+            log("Network exception: $error", true)
+            AuthVerificationResult(
+                isSuccess = false,
+                endpointUrl = endpointUrl,
+                httpStatusCode = 0,
+                rawWwwAuthenticateHeaders = emptyList(),
+                supportedMechanisms = emptyList(),
+                selectedMechanism = EwsAuthMechanism.UNKNOWN,
+                latencyMs = latency,
+                diagnosticLogs = logs,
+                errorMessage = error
+            )
         }
-    }
-
-    private fun generateJluExchange2019FallbackResult(
-        endpointUrl: String,
-        latency: Long,
-        logs: MutableList<String>,
-        errorDetail: String? = null
-    ): AuthVerificationResult {
-        val simulatedHeaders = listOf(
-            "Negotiate",
-            "NTLM",
-            "Basic realm=\"owa.uni-giessen.de\""
-        )
-        val mechanisms = listOf(
-            EwsAuthMechanism.NEGOTIATE,
-            EwsAuthMechanism.NTLM,
-            EwsAuthMechanism.BASIC
-        )
-
-        logs.add("Fallback protocol inspection for $endpointUrl (Exchange 2019 cluster):")
-        simulatedHeaders.forEach {
-            logs.add("  • WWW-Authenticate: $it")
-            Log.i(TAG, "  [simulated] WWW-Authenticate: $it")
-        }
-        logs.add("Identified supported mechanisms: Negotiate (SPNEGO), NTLM, Basic (Over TLS)")
-        logs.add("Optimal binding: Negotiate (SPNEGO)")
-        if (errorDetail != null) {
-            logs.add("Note: Direct connection failed ($errorDetail), validated against JLU HRZ specification profile.")
-        }
-
-        return AuthVerificationResult(
-            isSuccess = true,
-            endpointUrl = endpointUrl,
-            httpStatusCode = 401,
-            rawWwwAuthenticateHeaders = simulatedHeaders,
-            supportedMechanisms = mechanisms,
-            selectedMechanism = EwsAuthMechanism.NEGOTIATE,
-            latencyMs = latency.coerceAtLeast(72),
-            diagnosticLogs = logs
-        )
     }
 }

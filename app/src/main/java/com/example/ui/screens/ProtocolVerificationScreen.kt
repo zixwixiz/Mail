@@ -108,7 +108,7 @@ fun ProtocolVerificationScreen(
                             color = JluGold.copy(alpha = 0.2f)
                         ) {
                             Text(
-                                text = "Exchange Server 2019",
+                                text = summary.exchangeVersion,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = JluGold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
