@@ -63,9 +63,9 @@ class JluRepository(
             permission = permission,
             department = department.ifBlank { "Justus-Liebig-Universität Gießen" },
             username = accountIdentifier.trim(),
-            password = password,
             endpointUrl = endpointUrl.trim()
         )
+        sessionPasswords[account.id] = password
         _availableMailboxes.value = _availableMailboxes.value + account
         return Pair(account, verification)
     }
@@ -108,7 +108,8 @@ class JluRepository(
         val result = ewsClient.sendMessage(
             endpointUrl = mailbox.endpointUrl,
             username = mailbox.username,
-            password = mailbox.password,
+            password = sessionPasswords[mailbox.id]
+                ?: error("Mailbox credentials are no longer available; reconnect the account.")
             senderEmail = mailbox.emailAddress,
             recipients = recipientList,
             subject = subject.trim(),
