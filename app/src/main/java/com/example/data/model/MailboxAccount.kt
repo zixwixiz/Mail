@@ -14,7 +14,7 @@ data class MailboxAccount(
     val permission: MailboxPermission,
     val department: String,
     val username: String = "",
-    val endpointUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx"
+    val endpointUrl: String = "https://exchange.uni-giessen.de/EWS/Exchange.asmx"
 ) {
     val isConfigured: Boolean
         get() = id.isNotBlank() && username.isNotBlank() && endpointUrl.isNotBlank()
