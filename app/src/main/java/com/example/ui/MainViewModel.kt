@@ -323,6 +323,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Smart Actions: Email to Calendar / Email to Task
     fun applyCalendarSuggestion(suggestion: SmartActionSuggestion.CalendarSuggestion) {
+        if (!_activeMailbox.value.isConfigured) {
+            showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
+            return
+        }
+
         viewModelScope.launch {
             val event = CalendarEventEntity(
                 id = "evt_${UUID.randomUUID()}",
@@ -342,6 +347,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyTaskSuggestion(suggestion: SmartActionSuggestion.TaskSuggestion) {
+        if (!_activeMailbox.value.isConfigured) {
+            showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
+            return
+        }
+
         viewModelScope.launch {
             val task = TaskEntity(
                 id = "task_${UUID.randomUUID()}",
@@ -407,6 +417,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Calendar
     fun createCalendarEvent(title: String, location: String, startEpochMs: Long, endEpochMs: Long) {
+        if (!_activeMailbox.value.isConfigured) {
+            showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
+            return
+        }
+
         viewModelScope.launch {
             val event = CalendarEventEntity(
                 id = "evt_${UUID.randomUUID()}",
@@ -442,6 +457,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Tasks
     fun createTask(title: String, description: String, dueInstant: Long?, priority: String) {
+        if (!_activeMailbox.value.isConfigured) {
+            showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
+            return
+        }
+
         viewModelScope.launch {
             val task = TaskEntity(
                 id = "task_${UUID.randomUUID()}",
@@ -474,6 +494,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Notes
     fun createNote(title: String, content: String) {
+        if (!_activeMailbox.value.isConfigured) {
+            showFeedback("Connect a mailbox before creating account-scoped data.", isError = true)
+            return
+        }
+
         viewModelScope.launch {
             val note = NoteEntity(
                 id = "note_${UUID.randomUUID()}",
