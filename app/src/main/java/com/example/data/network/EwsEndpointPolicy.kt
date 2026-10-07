@@ -4,8 +4,10 @@ import java.net.URI
 import java.util.Locale
 
 object EwsEndpointPolicy {
-    const val DEFAULT_HOST = "owa.uni-giessen.de"
+    const val DEFAULT_HOST = "exchange.uni-giessen.de"
+    const val DEFAULT_WEB_HOST = "owa.uni-giessen.de"
     const val DEFAULT_PATH = "/EWS/Exchange.asmx"
+    const val DEFAULT_ENDPOINT = "https://exchange.uni-giessen.de/EWS/Exchange.asmx"
 
     fun validate(endpointUrl: String, emailAddress: String? = null): String? {
         val trimmedUrl = endpointUrl.trim()
@@ -29,7 +31,7 @@ object EwsEndpointPolicy {
 
         val host = uri.host?.lowercase(Locale.ROOT)
         if (host.isNullOrBlank() ||
-            !(host == DEFAULT_HOST || host.endsWith(".uni-giessen.de"))
+            !(host == DEFAULT_HOST || host == DEFAULT_WEB_HOST)
         ) {
             return "EWS endpoint host must belong to uni-giessen.de."
         }
