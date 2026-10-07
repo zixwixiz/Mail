@@ -80,6 +80,7 @@ fun MailScreen(
         "INBOX" to "Inbox",
         "SENT" to "Sent",
         "DRAFTS" to "Drafts",
+        "TRASH" to "Trash",
         "ARCHIVE" to "Archive"
     )
 
@@ -121,6 +122,7 @@ fun MailScreen(
                                 "INBOX" -> Icons.Default.Inbox
                                 "SENT" -> Icons.Default.Send
                                 "DRAFTS" -> Icons.Default.Drafts
+                                "TRASH" -> Icons.Default.Archive
                                 else -> Icons.Default.Archive
                             }
                             Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
