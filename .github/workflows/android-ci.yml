@@ -1,5 +1,5 @@
 name: Android CI
-# CI build for JLU IMAP authentication changes
+# CI build and GitHub Release for JLU Mail
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -37,10 +37,23 @@ jobs:
       - name: Debug APK
         run: gradle :app:assembleDebug --no-daemon
 
-      - name: Upload debug APK
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v6
         with:
           name: jlu-mail-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish APK to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: JLU Mail build ${{ github.run_number }}
+          body: |
+            JLU Mail debug APK build ${{ github.run_number }}.
+
+            Commit: ${{ github.sha }}
+          prerelease: false
+          files: app/build/outputs/apk/debug/app-debug.apk
