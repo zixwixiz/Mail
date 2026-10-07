@@ -175,4 +175,4 @@ fun AddAccountDialog(
 }
 
 private const val AuthVerificationResultEndpoint =
-    "https://exchange.uni-giessen.de/EWS/Exchange.asmx"
+    "https://owa.uni-giessen.de/EWS/Exchange.asmx"
