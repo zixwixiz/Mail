@@ -342,7 +342,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Protocol Verification Execution
-    fun startProtocolVerification(host: String = "owa.uni-giessen.de", ewsUrl: String = "https://owa.uni-giessen.de/EWS/Exchange.asmx") {
+    fun startProtocolVerification(host: String = com.example.data.network.EwsEndpointPolicy.DEFAULT_HOST, ewsUrl: String = com.example.data.network.EwsEndpointPolicy.DEFAULT_ENDPOINT) {
         viewModelScope.launch {
             repository.runProtocolVerificationFlow(host, ewsUrl, _activeMailbox.value.id).collect { summary ->
                 _verificationSummary.value = summary
