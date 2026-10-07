@@ -3,6 +3,9 @@ package com.example
 import com.example.data.model.EwsAuthMechanism
 import com.example.data.network.AuthVerificationService
 import com.example.data.network.EwsClient
+import com.example.data.network.EwsEndpointPolicy
+import com.example.domain.SmartActionSuggestion
+import com.example.domain.SmartExtractor
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -177,6 +180,56 @@ class MailAppRobolectricTest {
         assertEquals(500, failed.httpStatusCode)
         assertEquals(1, requestCount)
     }
+
+    @Test
+    fun endpointPolicyNormalizesAndValidatesJluAccounts() {
+        assertEquals("ad\\\\u12345", EwsEndpointPolicy.normalizeUsername("u12345"))
+        assertEquals("ad\\\\u12345", EwsEndpointPolicy.normalizeUsername("ad\\\\u12345"))
+        assertTrue(EwsEndpointPolicy.validate(EwsEndpointPolicy.DEFAULT_ENDPOINT, "u12345@uni-giessen.de") == null)
+        assertTrue(EwsEndpointPolicy.validate("http://example.com/EWS/Exchange.asmx", "u12345@uni-giessen.de")?.contains("HTTPS") == true)
+        assertTrue(EwsEndpointPolicy.validate(EwsEndpointPolicy.DEFAULT_ENDPOINT, "user@example.com")?.contains("uni-giessen.de") == true)
+    }
+
+    @Test
+    fun smartExtractorDoesNotInventDates() {
+        val suggestions = SmartExtractor.extractSuggestions("Termin zur Besprechung", "Bitte melden Sie sich.", "mail-1")
+        assertTrue(suggestions.isEmpty())
+    }
+
+    @Test
+    fun smartExtractorUsesExplicitMeetingDateAndTime() {
+        val suggestions = SmartExtractor.extractSuggestions("Kolloquium", "Datum: 18. Oktober 2026, 10:00 Uhr\nOrt: Raum 204", "mail-2")
+        val calendar = suggestions.filterIsInstance<SmartActionSuggestion.CalendarSuggestion>().single()
+        assertEquals("Raum 204", calendar.location)
+        assertTrue(calendar.startInstant > 0L)
+        assertEquals(60 * 60 * 1000L, calendar.endInstant - calendar.startInstant)
+    }
+
+    @Test
+    fun ewsSendAcceptsNoErrorWithServerItemId() = runBlocking {
+        val client = fakeHttpClient { request ->
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("<ResponseClass=\"Success\"><ResponseCode>NoError</ResponseCode><Items><ItemId Id=\"server-created-001\"/></Items>".toResponseBody("text/xml".toMediaType()))
+                .build()
+        }
+        val result = EwsClient(client).sendMessage(
+            endpointUrl = EwsEndpointPolicy.DEFAULT_ENDPOINT,
+            username = "ad\\\\u12345",
+            password = "password",
+            senderEmail = "u12345@uni-giessen.de",
+            recipients = listOf("recipient@example.edu"),
+            subject = "Subject",
+            bodyHtml = "<p>Body</p>"
+        )
+        assertTrue(result.isSuccess)
+        assertEquals("server-created-001", result.messageId)
+        assertEquals("NoError", result.responseCode)
+    }
+
 
     private fun fakeHttpClient(handler: (okhttp3.Request) -> Response): OkHttpClient =
         OkHttpClient.Builder()
