@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import com.example.data.model.EwsAuthMechanism
+
 import com.example.data.local.AppDatabase
 import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
