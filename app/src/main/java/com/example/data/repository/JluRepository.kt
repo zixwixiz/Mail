@@ -2,6 +2,7 @@ package com.example.data.repository
 
 
 import com.example.data.local.AppDatabase
+import com.example.data.local.MailboxCredentialStore
 import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
@@ -31,10 +32,16 @@ class JluRepository(
     private val protocolVerifier: EwsProtocolVerifier = EwsProtocolVerifier(),
     val authVerificationService: AuthVerificationService = AuthVerificationService(),
     val ewsClient: EwsClient = EwsClient(),
+    private val credentialStore: MailboxCredentialStore,
 ) {
-    private val _availableMailboxes = MutableStateFlow<List<MailboxAccount>>(emptyList())
+    private val restored = credentialStore.load()
+    private val _availableMailboxes = MutableStateFlow(restored?.let { listOf(it.first) } ?: emptyList())
     private val sessionPasswords = ConcurrentHashMap<String, String>()
     val availableMailboxes: StateFlow<List<MailboxAccount>> = _availableMailboxes.asStateFlow()
+
+    init {
+        restored?.let { sessionPasswords[it.first.id] = it.second }
+    }
 
     suspend fun verifyAndAddAccount(
         accountIdentifier: String,
@@ -73,6 +80,7 @@ class JluRepository(
             endpointUrl = endpointUrl.trim()
         )
         sessionPasswords[account.id] = password
+        credentialStore.save(account, password)
         _availableMailboxes.value = _availableMailboxes.value + account
         return Pair(account, verification)
     }
@@ -97,6 +105,7 @@ class JluRepository(
 
     suspend fun disconnectMailbox(mailboxId: String) {
         sessionPasswords.remove(mailboxId)
+        credentialStore.clear()
         database.verificationDao().deleteVerification(mailboxId)
         _availableMailboxes.value = _availableMailboxes.value.filterNot { it.id == mailboxId }
     }
@@ -153,6 +162,32 @@ class JluRepository(
                 category = if (isDraft) "Draft" else "Sent"
             )
         )
+        return result
+    }
+
+    suspend fun syncCalendar(mailboxId: String): EwsCalendarSyncResult {
+        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId } ?: error("Mailbox is not configured.")
+        val result = EwsMailboxSyncClient().fetchCalendar(
+            endpoint = mailbox.endpointUrl,
+            username = mailbox.username,
+            password = sessionPasswords[mailbox.id] ?: error("Mailbox credentials are no longer available; reconnect the account."),
+            mailboxId = mailboxId,
+            mailboxEmail = mailbox.emailAddress
+        )
+        if (result.isSuccess) database.calendarDao().insertAll(result.events)
+        return result
+    }
+
+    suspend fun syncContacts(mailboxId: String): EwsContactSyncResult {
+        val mailbox = _availableMailboxes.value.firstOrNull { it.id == mailboxId } ?: error("Mailbox is not configured.")
+        val result = EwsMailboxSyncClient().fetchContacts(
+            endpoint = mailbox.endpointUrl,
+            username = mailbox.username,
+            password = sessionPasswords[mailbox.id] ?: error("Mailbox credentials are no longer available; reconnect the account."),
+            mailboxId = mailboxId,
+            mailboxEmail = mailbox.emailAddress
+        )
+        if (result.isSuccess) database.contactDao().insertAll(result.contacts)
         return result
     }
 
