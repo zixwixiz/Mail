@@ -516,7 +516,7 @@ class EwsClient(
         return messages
     }
 
-    private fun stripHtml(value: String): String = android.text.Html.fromHtml(value, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
+    private fun stripHtml(value: String): String = androidx.core.text.HtmlCompat.fromHtml(value, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
 
     private fun formatAttachmentSize(bytes: Long): String = when {
         bytes < 1024L -> "\${bytes} B"
