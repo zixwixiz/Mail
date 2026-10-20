@@ -465,7 +465,7 @@ class EwsClient(
                             ) -> appendBodyBreak()
                             parser.name.equals("FileAttachment", ignoreCase = true) -> {
                                 if (currentAttachmentName.isNotBlank()) {
-                                    val sizeText = currentAttachmentSize?.let { " (\${formatAttachmentSize(it)})" }.orEmpty()
+                                    val sizeText = currentAttachmentSize?.let { " (${formatAttachmentSize(it)})" }.orEmpty()
                                     currentAttachments += currentAttachmentName + sizeText
                                 }
                                 insideFileAttachment = false
@@ -510,7 +510,7 @@ class EwsClient(
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "XML parsing of EWS response failed: \${e.localizedMessage}")
+            Log.w(TAG, "XML parsing of EWS response failed: ${e.localizedMessage}")
         }
 
         return messages
@@ -519,7 +519,7 @@ class EwsClient(
     private fun stripHtml(value: String): String = androidx.core.text.HtmlCompat.fromHtml(value, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
 
     private fun formatAttachmentSize(bytes: Long): String = when {
-        bytes < 1024L -> "\${bytes} B"
+        bytes < 1024L -> "${bytes} B"
         bytes < 1024L * 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
         else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
     }
