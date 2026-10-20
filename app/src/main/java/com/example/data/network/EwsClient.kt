@@ -490,7 +490,7 @@ class EwsClient(
                                         senderEmail = currentSenderEmail,
                                         recipients = currentRecipients.joinToString(", "),
                                         receivedTimestamp = currentReceivedMs,
-                                        bodyText = body,
+                                        bodyText = if (bodyIsHtml) stripHtml(body) else body,
                                         bodyHtml = if (bodyIsHtml) body else "",
                                         isRead = currentIsRead,
                                         isFlagged = false,
