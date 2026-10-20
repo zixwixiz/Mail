@@ -132,15 +132,27 @@ fun TasksScreen(
                 val startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000L
 
                 val grouped = tasks.groupBy { task ->
-                    when {
-                        task.isCompleted -> "Completed"
-                        task.dueInstant != null && task.dueInstant < startOfToday -> "Overdue"
-                        task.dueInstant != null && task.dueInstant < startOfTomorrow -> "Today"
-                        task.dueInstant != null -> "Upcoming"
-                        else -> "No due date"
+                    when (groupMode) {
+                        "Priority" -> when (task.priority.uppercase()) {
+                            "HIGH" -> "High priority"
+                            "LOW" -> "Low priority"
+                            else -> "Normal priority"
+                        }
+                        "Source" -> if (task.source == "EMAIL_EXTRACTED") "From email" else "Manual tasks"
+                        else -> when {
+                            task.isCompleted -> "Completed"
+                            task.dueInstant != null && task.dueInstant < startOfToday -> "Overdue"
+                            task.dueInstant != null && task.dueInstant < startOfTomorrow -> "Today"
+                            task.dueInstant != null -> "Upcoming"
+                            else -> "No due date"
+                        }
                     }
                 }
-                val order = listOf("Overdue", "Today", "Upcoming", "No due date", "Completed")
+                val order = when (groupMode) {
+                    "Priority" -> listOf("High priority", "Normal priority", "Low priority")
+                    "Source" -> listOf("From email", "Manual tasks")
+                    else -> listOf("Overdue", "Today", "Upcoming", "No due date", "Completed")
+                }
 
                 order.forEach { group ->
                     val groupTasks = grouped[group].orEmpty()
@@ -151,7 +163,7 @@ fun TasksScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = when (group) {
-                                    "Overdue" -> MaterialTheme.colorScheme.error
+                                    "Overdue", "High priority" -> MaterialTheme.colorScheme.error
                                     "Today" -> MaterialTheme.colorScheme.primary
                                     "Completed" -> MaterialTheme.colorScheme.onSurfaceVariant
                                     else -> MaterialTheme.colorScheme.onSurface
