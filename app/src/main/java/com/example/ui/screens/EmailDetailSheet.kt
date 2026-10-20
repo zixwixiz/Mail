@@ -58,6 +58,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.graphics.Color as AndroidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,6 +99,7 @@ fun EmailDetailSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showLangPicker by remember { mutableStateOf(false) }
+    var allowEmailJavaScript by remember(email.id) { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -383,12 +389,57 @@ fun EmailDetailSheet(
                 }
             }
 
-            // Body rendering (Original or Translated)
+            // Body rendering (HTML mail, with scripts off unless explicitly enabled)
             Spacer(modifier = Modifier.height(10.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (currentTranslation != null) {
+            if (currentTranslation == null && email.bodyHtml.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("HTML email", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { allowEmailJavaScript = !allowEmailJavaScript }) {
+                        Text(if (allowEmailJavaScript) "Disable scripts" else "Enable scripts")
+                    }
+                }
+                if (allowEmailJavaScript) {
+                    Text(
+                        "Warning: scripts in email can track you or run untrusted code. Only enable them for emails you trust.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                AndroidView(
+                    modifier = Modifier.fillMaxWidth().height(420.dp),
+                    factory = { context ->
+                        WebView(context).apply {
+                            setBackgroundColor(AndroidColor.TRANSPARENT)
+                            webViewClient = WebViewClient()
+                            webChromeClient = WebChromeClient()
+                            settings.javaScriptEnabled = allowEmailJavaScript
+                            settings.domStorageEnabled = allowEmailJavaScript
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+                            settings.loadsImagesAutomatically = true
+                        }
+                    },
+                    update = { webView ->
+                        webView.settings.javaScriptEnabled = allowEmailJavaScript
+                        webView.settings.domStorageEnabled = allowEmailJavaScript
+                        val html = email.bodyHtml
+                        webView.loadDataWithBaseURL(
+                            "https://owa.uni-giessen.de/",
+                            "<!doctype html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{font-family: sans-serif; font-size:16px; line-height:1.5; overflow-wrap:anywhere; color:#202124} img,table{max-width:100%;height:auto} pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>$html</body></html>",
+                            "text/html",
+                            "UTF-8",
+                            null
+                        )
+                    }
+                )
+            } else if (currentTranslation != null) {
                 // Translation Badge
                 Surface(
                     shape = RoundedCornerShape(8.dp),
