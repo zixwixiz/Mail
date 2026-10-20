@@ -28,6 +28,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +67,7 @@ fun TasksScreen(
     onAddTaskClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var groupMode by remember { mutableStateOf("Due date") }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         floatingActionButton = {
@@ -93,6 +95,16 @@ fun TasksScreen(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Group tasks by", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Due date", "Priority", "Source").forEach { mode ->
+                            FilterChip(selected = groupMode == mode, onClick = { groupMode = mode }, label = { Text(mode) })
+                        }
+                    }
+                }
             }
 
             if (tasks.isEmpty()) {
