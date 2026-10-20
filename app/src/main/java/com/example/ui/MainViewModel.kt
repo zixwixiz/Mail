@@ -349,9 +349,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun translateCurrentEmail(target: TargetLanguage) {
         _targetLanguage.value = target
         val email = _selectedEmail.value ?: return
-        val result = TranslationService.translateGermanAcademicTextOnline(email.bodyText, target)
-        _currentTranslation.value = result
-        showFeedback("Translated to ${target.displayName}")
+        viewModelScope.launch {
+            runCatching {
+                TranslationService.translateGermanAcademicTextOnline(
+                    email.bodyText.ifBlank {
+                        android.text.Html.fromHtml(
+                            email.bodyHtml,
+                            android.text.Html.FROM_HTML_MODE_LEGACY
+                        ).toString()
+                    },
+                    target
+                )
+            }.onSuccess { result ->
+                _currentTranslation.value = result
+                showFeedback("Translated to ${target.displayName}")
+            }.onFailure { error ->
+                showFeedback("Translation failed: ${error.localizedMessage ?: "please try again"}", isError = true)
+            }
+        }
     }
 
     fun clearTranslation() {
