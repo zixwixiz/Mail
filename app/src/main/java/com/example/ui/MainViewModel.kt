@@ -353,9 +353,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 TranslationService.translateGermanAcademicTextOnline(
                     email.bodyText.ifBlank {
-                        android.text.Html.fromHtml(
+                        androidx.core.text.HtmlCompat.fromHtml(
                             email.bodyHtml,
-                            android.text.Html.FROM_HTML_MODE_LEGACY
+                            androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY
                         ).toString()
                     },
                     target
