@@ -192,7 +192,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isSyncing.value = true
             try {
                 val selected = _selectedFolder.value
-                val foldersToSync = if (selected == "ATTACHMENTS") {
+                val foldersToSync = if (selected == "ATTACHMENTS" || selected == "SNOOZED") {
                     listOf("INBOX", "SENT", "DRAFTS", "ARCHIVE")
                 } else {
                     listOf(selected)
@@ -266,10 +266,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) { mailbox, folder ->
         Pair(mailbox.id, folder)
     }.flatMapLatest { (mailboxId, folder) ->
-        if (folder == "ATTACHMENTS") {
-            repository.getAllMessages(mailboxId).map { messages -> messages.filter { it.hasAttachments } }
-        } else {
-            repository.getMessages(mailboxId, folder)
+        when (folder) {
+            "ATTACHMENTS" -> repository.getAllMessages(mailboxId).map { messages ->
+                messages.filter { it.hasAttachments }
+            }
+            "SNOOZED" -> repository.getAllMessages(mailboxId).map { messages ->
+                val now = System.currentTimeMillis()
+                messages.filter { it.snoozedUntil != null && it.snoozedUntil > now }
+            }
+            else -> repository.getMessages(mailboxId, folder)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
