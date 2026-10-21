@@ -207,10 +207,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (runCatching { repository.syncCalendar(mailbox.id) }.isFailure) secondaryFailures += "calendar"
                     if (runCatching { repository.syncContacts(mailbox.id) }.isFailure) secondaryFailures += "contacts"
                 }
-                val headline = if (selected == "ATTACHMENTS") {
-                    "Attachment library sync checked ${foldersToSync.size} folders; ${refreshedCount} message(s) refreshed."
-                } else {
-                    "Exchange mail refreshed: ${refreshedCount} message(s)."
+                val headline = when (selected) {
+                    "ATTACHMENTS" -> "Attachment library sync checked ${foldersToSync.size} folders; ${refreshedCount} message(s) refreshed."
+                    "SNOOZED" -> "Snoozed view refreshed from ${foldersToSync.size} mail folders."
+                    else -> "Exchange mail refreshed: ${refreshedCount} message(s)."
                 }
                 val issues = buildList {
                     if (failedFolders.isNotEmpty()) add("failed folders: ${failedFolders.joinToString()}")
