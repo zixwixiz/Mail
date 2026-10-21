@@ -136,7 +136,6 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val savedVerification by viewModel.savedVerification.collectAsStateWithLifecycle()
     val userLocalZoneId by viewModel.userLocalZoneId.collectAsStateWithLifecycle()
     val autoTranslateOnOpen by viewModel.autoTranslateOnOpen.collectAsStateWithLifecycle()
-    val autoTranslateOnOpen by viewModel.autoTranslateOnOpen.collectAsStateWithLifecycle()
 
     val selectedEmail by viewModel.selectedEmail.collectAsStateWithLifecycle()
     val currentTranslation by viewModel.currentTranslation.collectAsStateWithLifecycle()
@@ -529,8 +528,6 @@ fun JluMobileApp(viewModel: MainViewModel) {
         ) {
             SettingsScreen(
                 activeMailbox = activeMailbox,
-                autoTranslateOnOpen = autoTranslateOnOpen,
-                onAutoTranslateOnOpenChange = { viewModel.setAutoTranslateOnOpen(it) },
                 autoTranslateOnOpen = autoTranslateOnOpen,
                 onAutoTranslateOnOpenChange = { viewModel.setAutoTranslateOnOpen(it) },
                 translationProgress = translationProgress,
