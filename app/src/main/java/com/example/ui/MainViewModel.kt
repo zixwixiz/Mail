@@ -479,11 +479,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching {
                 repository.setSnoozedUntil(emailId, snoozedUntil)
-            }.onSuccess {
                 SnoozeScheduler.schedule(getApplication<Application>(), emailId, snoozedUntil)
+            }.onSuccess {
                 showFeedback("Email snoozed. It will return automatically when due.")
             }.onFailure { error ->
-                showFeedback("Could not snooze email: ${error.localizedMessage ?: "please try again"}", isError = true)
+                runCatching { repository.setSnoozedUntil(emailId, null) }
+                showFeedback("Could not schedule snooze: ${error.localizedMessage ?: "please try again"}", isError = true)
             }
         }
     }
