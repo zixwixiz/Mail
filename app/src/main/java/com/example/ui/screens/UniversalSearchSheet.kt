@@ -73,7 +73,7 @@ fun UniversalSearchSheet(
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                placeholder = { Text("Search emails, events, tasks, contacts, notes...") },
+                placeholder = { Text("Search mail, events, tasks, contacts, notes...") },
                 leadingIcon = {
                     Icon(imageVector = Icons.Default.Search, contentDescription = null)
                 },
@@ -88,6 +88,12 @@ fun UniversalSearchSheet(
                     .fillMaxWidth()
                     .testTag("search_text_input"),
                 singleLine = true
+            )
+
+            Text(
+                text = "Mail filters: from:alice · subject:invoice · has:attachment · is:unread · is:starred · after:2026-01-01 · in:inbox",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(12.dp))

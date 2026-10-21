@@ -9,6 +9,7 @@ import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
+import com.example.data.local.entities.MailTranslationEntity
 import com.example.data.local.entities.NoteEntity
 import com.example.data.local.entities.TaskEntity
 import com.example.data.model.EwsAuthMechanism
@@ -16,6 +17,14 @@ import com.example.data.model.MailboxAccount
 import com.example.data.model.MailboxPermission
 import com.example.data.model.ProtocolVerificationSummary
 import com.example.data.repository.JluRepository
+import com.example.data.sync.SnoozeScheduler
+import com.example.domain.ContactCandidate
+import com.example.domain.ContactDiscovery
+import com.example.domain.DetectedEmailChange
+import com.example.domain.EmailChangeDetector
+import com.example.domain.MailSearchQueryParser
+import com.example.domain.MailTextFormatter
+import com.example.domain.MailTranslationFingerprint
 import com.example.domain.SmartActionSuggestion
 import com.example.domain.SmartExtractor
 import com.example.domain.TargetLanguage
@@ -28,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.stateIn
@@ -50,6 +60,16 @@ data class UiFeedback(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class MailboxTranslationProgress(
+    val total: Int = 0,
+    val completed: Int = 0,
+    val failed: Int = 0,
+    val isRunning: Boolean = false
+) {
+    val progressFraction: Float
+        get() = if (total == 0) 0f else (completed.toFloat() / total).coerceIn(0f, 1f)
+}
+
 data class UniversalSearchResults(
     val query: String = "",
     val mail: List<MailMessageEntity> = emptyList(),
@@ -66,6 +86,24 @@ data class UniversalSearchResults(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getInstance(application)
     private val repository = JluRepository(database, credentialStore = MailboxCredentialStore(application.applicationContext))
+
+    private val preferences = application.getSharedPreferences("mail_preferences", Application.MODE_PRIVATE)
+
+    private val _autoTranslateOnOpen = MutableStateFlow(
+        preferences.getBoolean("auto_translate_on_open", false)
+    )
+    val autoTranslateOnOpen: StateFlow<Boolean> = _autoTranslateOnOpen.asStateFlow()
+
+    fun setAutoTranslateOnOpen(enabled: Boolean) {
+        preferences.edit().putBoolean("auto_translate_on_open", enabled).apply()
+        _autoTranslateOnOpen.value = enabled
+        if (enabled) {
+            showFeedback("English mode enabled. Queueing existing cached German messages.")
+            translateCachedMailboxToEnglish()
+        } else {
+            showFeedback("Automatic translation on open is off. Cached translations are kept.")
+        }
+    }
 
     val availableMailboxes: StateFlow<List<MailboxAccount>> = repository.availableMailboxes
 
@@ -152,14 +190,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             _isSyncing.value = true
-            val result = repository.syncFolderMessages(_activeMailbox.value.id, _selectedFolder.value)
-            _isSyncing.value = false
-            if (result.isSuccess) {
-                runCatching { repository.syncCalendar(_activeMailbox.value.id) }
-                runCatching { repository.syncContacts(_activeMailbox.value.id) }
-                showFeedback("Exchange mail refreshed: " + result.messages.size + " message(s). Calendar and contacts refreshed.")
-            } else {
-                showFeedback("EWS FindItem: " + result.responseCode, isError = true)
+            try {
+                val selected = _selectedFolder.value
+                val foldersToSync = if (selected == "ATTACHMENTS" || selected == "SNOOZED") {
+                    listOf("INBOX", "SENT", "DRAFTS", "ARCHIVE")
+                } else {
+                    listOf(selected)
+                }
+                val results = foldersToSync.map { folder ->
+                    folder to repository.syncFolderMessages(mailbox.id, folder)
+                }
+                val failedFolders = results.filter { !it.second.isSuccess }.map { it.first }
+                val refreshedCount = results.filter { it.second.isSuccess }.sumOf { it.second.messages.size }
+                val secondaryFailures = mutableListOf<String>()
+                if (results.any { it.second.isSuccess }) {
+                    if (runCatching { repository.syncCalendar(mailbox.id) }.isFailure) secondaryFailures += "calendar"
+                    if (runCatching { repository.syncContacts(mailbox.id) }.isFailure) secondaryFailures += "contacts"
+                }
+                val headline = when (selected) {
+                    "ATTACHMENTS" -> "Attachment library sync checked ${foldersToSync.size} folders; ${refreshedCount} message(s) refreshed."
+                    "SNOOZED" -> "Snoozed view refreshed from ${foldersToSync.size} mail folders."
+                    else -> "Exchange mail refreshed: ${refreshedCount} message(s)."
+                }
+                val issues = buildList {
+                    if (failedFolders.isNotEmpty()) add("failed folders: ${failedFolders.joinToString()}")
+                    if (secondaryFailures.isNotEmpty()) add("failed modules: ${secondaryFailures.joinToString()}")
+                }
+                showFeedback(
+                    if (issues.isEmpty()) "$headline Calendar and contacts refreshed."
+                    else "$headline Partial sync: ${issues.joinToString("; ")}.",
+                    isError = issues.isNotEmpty()
+                )
+            } catch (error: Throwable) {
+                showFeedback(
+                    "Sync failed: ${error.localizedMessage?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName}",
+                    isError = true
+                )
+            } finally {
+                _isSyncing.value = false
             }
         }
     }
@@ -198,8 +266,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) { mailbox, folder ->
         Pair(mailbox.id, folder)
     }.flatMapLatest { (mailboxId, folder) ->
-        repository.getMessages(mailboxId, folder)
+        when (folder) {
+            "ATTACHMENTS" -> repository.getAllMessages(mailboxId).map { messages ->
+                messages.filter { it.hasAttachments }
+            }
+            "SNOOZED" -> repository.getAllMessages(mailboxId).map { messages ->
+                val now = System.currentTimeMillis()
+                messages.filter { it.snoozedUntil != null && it.snoozedUntil > now }
+            }
+            else -> repository.getMessages(mailboxId, folder)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Cached messages across folders for daily/weekly briefing and mailbox-wide features.
+    val allMailboxMessages: StateFlow<List<MailMessageEntity>> = _activeMailbox
+        .flatMapLatest { repository.getAllMessages(it.id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val cachedTranslations: StateFlow<List<MailTranslationEntity>> = _activeMailbox
+        .flatMapLatest { database.translationDao().getTranslationsForMailbox(it.id, "en") }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _translationProgress = MutableStateFlow(MailboxTranslationProgress())
+    val translationProgress: StateFlow<MailboxTranslationProgress> = _translationProgress.asStateFlow()
 
     // Events for current mailbox
     val currentEvents: StateFlow<List<CalendarEventEntity>> = _activeMailbox
@@ -215,6 +304,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentContacts: StateFlow<List<ContactEntity>> = _activeMailbox
         .flatMapLatest { repository.getContacts(it.id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _contactCandidates = MutableStateFlow<List<ContactCandidate>>(emptyList())
+    val contactCandidates: StateFlow<List<ContactCandidate>> = _contactCandidates.asStateFlow()
 
     // Notes for current mailbox
     val currentNotes: StateFlow<List<NoteEntity>> = _activeMailbox
@@ -260,6 +352,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _smartSuggestions = MutableStateFlow<List<SmartActionSuggestion>>(emptyList())
     val smartSuggestions: StateFlow<List<SmartActionSuggestion>> = _smartSuggestions.asStateFlow()
 
+    private val _detectedChanges = MutableStateFlow<List<DetectedEmailChange>>(emptyList())
+    val detectedChanges: StateFlow<List<DetectedEmailChange>> = _detectedChanges.asStateFlow()
+
     // UI Feedback Banner / Snackbar
     private val _uiFeedback = MutableStateFlow<UiFeedback?>(null)
     val uiFeedback: StateFlow<UiFeedback?> = _uiFeedback.asStateFlow()
@@ -288,6 +383,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectMailbox(mailbox: MailboxAccount) {
         _activeMailbox.value = mailbox
+        _contactCandidates.value = emptyList()
+        _detectedChanges.value = emptyList()
+        _translationProgress.value = MailboxTranslationProgress()
         _selectedEmail.value = null
         showFeedback("Switched mailbox: " + mailbox.displayName)
     }
@@ -300,6 +398,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch { repository.disconnectMailbox(mailboxId) }
         _activeMailbox.value = MailboxAccount.UNCONFIGURED
+        _contactCandidates.value = emptyList()
+        _translationProgress.value = MailboxTranslationProgress()
         _selectedFolder.value = "INBOX"
         _selectedEmail.value = null
         _smartSuggestions.value = emptyList()
@@ -324,9 +424,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.setReadState(email.id, true)
             }
             // Extract smart suggestions
-            _smartSuggestions.value = SmartExtractor.extractSuggestions(email.subject, email.bodyText, email.id)
+            _smartSuggestions.value = SmartExtractor.extractSuggestions(email.subject, email.bodyText, email.id, email.receivedTimestamp)
+            _detectedChanges.value = EmailChangeDetector.detect(email, allMailboxMessages.value)
+            val hasCurrentEnglishCache = cachedTranslations.value.any {
+                it.messageId == email.id &&
+                    it.originalFingerprint == MailTranslationFingerprint.forMessage(email)
+            }
+            val shouldAutoTranslate = _autoTranslateOnOpen.value &&
+                TranslationService.isLikelyGerman(
+                    "${email.subject}\n${email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }}"
+                )
+            if (hasCurrentEnglishCache || shouldAutoTranslate) {
+                translateCurrentEmail(TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" })
+            } else {
+                viewModelScope.launch {
+                    val cached = database.translationDao().getTranslation(_activeMailbox.value.id, email.id, "en")
+                    if (
+                        cached != null &&
+                        cached.originalFingerprint == MailTranslationFingerprint.forMessage(email) &&
+                        _selectedEmail.value?.id == email.id
+                    ) {
+                        val originalBody = email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }
+                        _targetLanguage.value = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
+                        _currentTranslation.value = TranslationResult(
+                            originalText = originalBody,
+                            translatedText = cached.translatedBody,
+                            targetLang = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" },
+                            isPartial = cached.isPartial
+                        )
+                    }
+                }
+            }
         } else {
             _smartSuggestions.value = emptyList()
+            _detectedChanges.value = emptyList()
         }
     }
 
@@ -346,25 +477,187 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun snoozeEmail(emailId: String, durationMillis: Long) {
+        if (durationMillis <= 0L) {
+            showFeedback("Choose a future snooze time.", isError = true)
+            return
+        }
+        val snoozedUntil = System.currentTimeMillis() + durationMillis
+        viewModelScope.launch {
+            runCatching {
+                repository.setSnoozedUntil(emailId, snoozedUntil)
+                SnoozeScheduler.schedule(getApplication<Application>(), emailId, snoozedUntil)
+            }.onSuccess {
+                showFeedback("Email snoozed. It will return automatically when due.")
+            }.onFailure { error ->
+                runCatching { repository.setSnoozedUntil(emailId, null) }
+                showFeedback("Could not schedule snooze: ${error.localizedMessage ?: "please try again"}", isError = true)
+            }
+        }
+    }
+
     fun translateCurrentEmail(target: TargetLanguage) {
         _targetLanguage.value = target
         val email = _selectedEmail.value ?: return
+        val mailboxId = _activeMailbox.value.id
         viewModelScope.launch {
+            val originalBody = email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }
+            val fingerprint = MailTranslationFingerprint.forMessage(email)
+            val cached = database.translationDao().getTranslation(mailboxId, email.id, target.code)
+            if (cached != null && cached.originalFingerprint == fingerprint) {
+                _currentTranslation.value = TranslationResult(
+                    originalText = originalBody,
+                    translatedText = cached.translatedBody,
+                    targetLang = target,
+                    isPartial = cached.isPartial
+                )
+                showFeedback(
+                    if (cached.isPartial) "Loaded cached translation; some text may remain untranslated."
+                    else "Loaded cached translation to ${target.displayName}."
+                )
+                return@launch
+            }
+
             runCatching {
-                TranslationService.translateGermanAcademicTextOnline(
-                    email.bodyText.ifBlank {
-                        androidx.core.text.HtmlCompat.fromHtml(
-                            email.bodyHtml,
-                            androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY
-                        ).toString()
-                    },
+                TranslationService.translateGermanAcademicTextsOnline(
+                    listOf(email.subject, originalBody),
                     target
                 )
-            }.onSuccess { result ->
-                _currentTranslation.value = result
-                showFeedback("Translated to ${target.displayName}")
+            }.onSuccess { results ->
+                val translatedSubject = results.getOrNull(0)?.translatedText ?: email.subject
+                val bodyResult = results.getOrNull(1) ?: TranslationResult(
+                    originalText = originalBody,
+                    translatedText = originalBody,
+                    targetLang = target,
+                    isPartial = true
+                )
+                _currentTranslation.value = bodyResult
+                runCatching {
+                    database.translationDao().upsertTranslation(
+                        MailTranslationEntity(
+                            mailboxId = mailboxId,
+                            messageId = email.id,
+                            targetLanguage = target.code,
+                            originalFingerprint = fingerprint,
+                            translatedSubject = translatedSubject,
+                            translatedPreview = bodyResult.translatedText.take(180),
+                            translatedBody = bodyResult.translatedText,
+                            isPartial = bodyResult.isPartial ||
+                                (email.subject.isNotBlank() && translatedSubject == email.subject) ||
+                                (originalBody.isNotBlank() && bodyResult.translatedText == originalBody),
+                            updatedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+                showFeedback(
+                    if (bodyResult.isPartial) "Translation ready; some text may remain untranslated."
+                    else "Translated to ${target.displayName}"
+                )
             }.onFailure { error ->
                 showFeedback("Translation failed: ${error.localizedMessage ?: "please try again"}", isError = true)
+            }
+        }
+    }
+
+    fun translateCachedMailboxToEnglish() {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Connect a mailbox before translating cached mail.", isError = true)
+            return
+        }
+        if (_translationProgress.value.isRunning) {
+            showFeedback("Mailbox translation is already running.")
+            return
+        }
+
+        val allMessages = allMailboxMessages.value
+        if (allMessages.isEmpty()) {
+            showFeedback("No cached messages are available to translate yet.", isError = true)
+            return
+        }
+        val existing = cachedTranslations.value.associateBy { it.messageId }
+        val target = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
+        val germanMessages = allMessages.filter { message ->
+            val body = message.bodyText.ifBlank { MailTextFormatter.plainText(message.bodyHtml) }
+            TranslationService.isLikelyGerman("${message.subject}\n$body")
+        }
+        val pending = germanMessages.filter { message ->
+            existing[message.id]?.originalFingerprint != MailTranslationFingerprint.forMessage(message)
+        }
+        if (pending.isEmpty()) {
+            showFeedback(
+                if (germanMessages.isEmpty()) {
+                    "No cached messages were confidently identified as German."
+                } else {
+                    "All likely German cached messages already have current English translations."
+                }
+            )
+            return
+        }
+
+        _translationProgress.value = MailboxTranslationProgress(total = pending.size, isRunning = true)
+        viewModelScope.launch {
+            var completed = 0
+            var failed = 0
+            try {
+                for (batch in pending.chunked(4)) {
+                    if (_activeMailbox.value.id != mailbox.id) break
+                    val originals = batch.map { message ->
+                        message.bodyText.ifBlank { MailTextFormatter.plainText(message.bodyHtml) }
+                    }
+                    val fields = batch.flatMapIndexed { index, message ->
+                        listOf(message.subject, originals[index])
+                    }
+                    val results = TranslationService.translateGermanAcademicTextsOnline(fields, target)
+
+                    batch.forEachIndexed { index, message ->
+                        val originalBody = originals[index]
+                        val subjectResult = results.getOrNull(index * 2)
+                        val bodyResult = results.getOrNull(index * 2 + 1)
+                        if (subjectResult == null || bodyResult == null) {
+                            failed++
+                        } else {
+                            val translatedSubject = subjectResult.translatedText
+                            val translatedBody = bodyResult.translatedText
+                            val isPartial = subjectResult.isPartial || bodyResult.isPartial ||
+                                (message.subject.isNotBlank() && translatedSubject == message.subject) ||
+                                (originalBody.isNotBlank() && translatedBody == originalBody)
+                            runCatching {
+                                database.translationDao().upsertTranslation(
+                                    MailTranslationEntity(
+                                        mailboxId = mailbox.id,
+                                        messageId = message.id,
+                                        targetLanguage = target.code,
+                                        originalFingerprint = MailTranslationFingerprint.forMessage(message),
+                                        translatedSubject = translatedSubject,
+                                        translatedPreview = translatedBody.take(180),
+                                        translatedBody = translatedBody,
+                                        isPartial = isPartial,
+                                        updatedTimestamp = System.currentTimeMillis()
+                                    )
+                                )
+                            }.onFailure { failed++ }
+                        }
+                        completed++
+                    }
+                    _translationProgress.value = MailboxTranslationProgress(
+                        total = pending.size,
+                        completed = completed,
+                        failed = failed,
+                        isRunning = true
+                    )
+                    kotlinx.coroutines.yield()
+                }
+            } finally {
+                _translationProgress.value = MailboxTranslationProgress(
+                    total = pending.size,
+                    completed = completed,
+                    failed = failed,
+                    isRunning = false
+                )
+            }
+            if (_activeMailbox.value.id == mailbox.id) {
+                showFeedback("Mailbox translation finished: ${completed - failed} saved, ${failed} failed.")
             }
         }
     }
@@ -388,10 +681,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 description = suggestion.description,
                 startInstant = suggestion.startInstant,
                 endInstant = suggestion.endInstant,
-                timeZone = TimezoneEngine.JLU_CAMPUS_ZONE,
+                timeZone = suggestion.sourceTimeZoneId,
                 location = suggestion.location,
                 attendees = _activeMailbox.value.emailAddress,
-                rsvpStatus = "ACCEPTED"
+                rsvpStatus = "NONE"
             )
             repository.addCalendarEvent(event)
             showFeedback("Event '${suggestion.title}' added to Calendar!")
@@ -419,6 +712,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.addTask(task)
             showFeedback("Task '${suggestion.title}' created from email!")
+        }
+    }
+
+    fun scanContactsFromEmails() {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Connect a mailbox before scanning emails for contacts.", isError = true)
+            return
+        }
+        val existingEmails = currentContacts.value.mapNotNull { contact ->
+            contact.email.trim().takeIf { it.isNotBlank() }
+        }.toSet()
+        val candidates = ContactDiscovery.discover(
+            messages = allMailboxMessages.value,
+            existingEmails = existingEmails,
+            ownEmail = mailbox.emailAddress
+        )
+        _contactCandidates.value = candidates
+        showFeedback("Found ${candidates.size} new contact suggestion(s). Review them before saving.")
+    }
+
+    fun createFollowUpTask(email: MailMessageEntity, detectedPromise: String) {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Connect a mailbox before creating follow-up tasks.", isError = true)
+            return
+        }
+        if (currentTasks.value.any {
+                it.sourceEmailId == email.id && it.title.startsWith("Follow up with ") && !it.isCompleted
+            }
+        ) {
+            showFeedback("A follow-up task already exists for this email.")
+            return
+        }
+        viewModelScope.launch {
+            val dueInstant = System.currentTimeMillis() + 3L * 24 * 60 * 60 * 1000
+            runCatching {
+                repository.addTask(
+                    TaskEntity(
+                        id = "follow_up_${UUID.randomUUID()}",
+                        mailboxId = mailbox.id,
+                        title = "Follow up with ${email.senderName.ifBlank { email.senderEmail }}",
+                        description = "The email may contain a promise to follow up: \"$detectedPromise\". Subject: ${email.subject}",
+                        dueInstant = dueInstant,
+                        timeZone = TimeZone.getDefault().id,
+                        priority = "NORMAL",
+                        source = "EMAIL_EXTRACTED",
+                        sourceEmailId = email.id
+                    )
+                )
+            }.onSuccess {
+                showFeedback("Follow-up task created with a suggested due date in 3 days.")
+            }.onFailure { error ->
+                showFeedback("Could not create follow-up task: ${error.localizedMessage ?: "please try again"}", isError = true)
+            }
+        }
+    }
+
+    fun saveDiscoveredContact(candidate: ContactCandidate) {
+        val mailbox = _activeMailbox.value
+        if (!mailbox.isConfigured) {
+            showFeedback("Connect a mailbox before saving contacts.", isError = true)
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                repository.addContact(
+                    ContactEntity(
+                        id = "contact_${UUID.randomUUID()}",
+                        mailboxId = mailbox.id,
+                        displayName = candidate.displayName,
+                        email = candidate.email,
+                        phone = candidate.phone,
+                        organization = candidate.organization,
+                        department = "",
+                        officeRoom = ""
+                    )
+                )
+            }.onSuccess {
+                _contactCandidates.value = _contactCandidates.value.filterNot {
+                    it.email.equals(candidate.email, ignoreCase = true)
+                }
+                showFeedback("Saved contact: ${candidate.displayName}")
+            }.onFailure { error ->
+                showFeedback("Could not save contact: ${error.localizedMessage ?: "please try again"}", isError = true)
+            }
+        }
+    }
+
+    fun ignoreDiscoveredContact(candidate: ContactCandidate) {
+        _contactCandidates.value = _contactCandidates.value.filterNot {
+            it.email.equals(candidate.email, ignoreCase = true)
         }
     }
 
@@ -593,11 +978,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            val mail = repository.searchMail(mailboxId, query).firstOrNull() ?: emptyList()
-            val events = repository.searchCalendar(mailboxId, query).firstOrNull() ?: emptyList()
-            val tasks = repository.searchTasks(mailboxId, query).firstOrNull() ?: emptyList()
-            val contacts = repository.searchContacts(mailboxId, query).firstOrNull() ?: emptyList()
-            val notes = repository.searchNotes(mailboxId, query).firstOrNull() ?: emptyList()
+            val parsedQuery = MailSearchQueryParser.parse(query)
+            val searchText = parsedQuery.text
+            val mail = (repository.searchMail(mailboxId, searchText).firstOrNull() ?: emptyList())
+                .filter(parsedQuery::matches)
+            val events = if (searchText.isBlank()) emptyList() else repository.searchCalendar(mailboxId, searchText).firstOrNull() ?: emptyList()
+            val tasks = if (searchText.isBlank()) emptyList() else repository.searchTasks(mailboxId, searchText).firstOrNull() ?: emptyList()
+            val contacts = if (searchText.isBlank()) emptyList() else repository.searchContacts(mailboxId, searchText).firstOrNull() ?: emptyList()
+            val notes = if (searchText.isBlank()) emptyList() else repository.searchNotes(mailboxId, searchText).firstOrNull() ?: emptyList()
             if (_searchQuery.value != query || _activeMailbox.value.id != mailboxId) return@launch
             _searchResults.value = UniversalSearchResults(
                 query = query,

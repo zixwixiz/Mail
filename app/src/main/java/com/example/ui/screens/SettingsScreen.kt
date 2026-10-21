@@ -27,10 +27,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,6 +43,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.MailboxAccount
+import com.example.ui.MailboxTranslationProgress
 import com.example.ui.theme.JluGold
 import com.example.ui.theme.JluNavy
 import com.example.ui.theme.JluSuccess
@@ -48,6 +51,10 @@ import com.example.ui.theme.JluSuccess
 @Composable
 fun SettingsScreen(
     activeMailbox: MailboxAccount,
+    autoTranslateOnOpen: Boolean,
+    onAutoTranslateOnOpenChange: (Boolean) -> Unit,
+    translationProgress: MailboxTranslationProgress,
+    onTranslateCachedMailbox: () -> Unit,
     onShareDiagnostics: () -> Unit,
     onAddAccountClick: () -> Unit = {},
     onDisconnectAccount: () -> Unit = {},
@@ -67,6 +74,82 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "English reading mode",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Automatically translate likely German messages when opened. Enabling also queues existing cached mail across synced folders. Original text remains available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoTranslateOnOpen,
+                        onCheckedChange = onAutoTranslateOnOpenChange,
+                        modifier = Modifier.testTag("auto_translate_on_open_switch")
+                    )
+                }
+            }
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Translate existing mailbox",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Translate cached messages across synced folders in batches. Only messages that look German are queued; translations are stored locally and marked when they may be incomplete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Button(
+                        onClick = onTranslateCachedMailbox,
+                        enabled = !translationProgress.isRunning,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        Text(if (translationProgress.isRunning) "Translating…" else "Translate cached messages to English")
+                    }
+                    if (translationProgress.total > 0) {
+                        if (translationProgress.isRunning) {
+                            LinearProgressIndicator(
+                                progress = translationProgress.progressFraction,
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            )
+                        }
+                        Text(
+                            text = "${translationProgress.completed}/${translationProgress.total} processed · ${translationProgress.failed} failed",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // Account Management Card
