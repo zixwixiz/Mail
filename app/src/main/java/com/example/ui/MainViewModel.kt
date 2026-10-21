@@ -378,6 +378,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _activeMailbox.value = mailbox
         _contactCandidates.value = emptyList()
         _detectedChanges.value = emptyList()
+        _translationProgress.value = MailboxTranslationProgress()
         _selectedEmail.value = null
         showFeedback("Switched mailbox: " + mailbox.displayName)
     }
@@ -391,6 +392,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.disconnectMailbox(mailboxId) }
         _activeMailbox.value = MailboxAccount.UNCONFIGURED
         _contactCandidates.value = emptyList()
+        _translationProgress.value = MailboxTranslationProgress()
         _selectedFolder.value = "INBOX"
         _selectedEmail.value = null
         _smartSuggestions.value = emptyList()
@@ -575,7 +577,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             existing[message.id]?.originalFingerprint != MailTranslationFingerprint.forMessage(message)
         }
         if (pending.isEmpty()) {
-            showFeedback("No new German messages need an English translation.")
+            showFeedback(
+                if (germanMessages.isEmpty()) {
+                    "No cached messages were confidently identified as German."
+                } else {
+                    "All likely German cached messages already have current English translations."
+                }
+            )
             return
         }
 
@@ -584,8 +592,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             var completed = 0
             var failed = 0
             try {
-                pending.chunked(4).forEach { batch ->
-                    if (_activeMailbox.value.id != mailbox.id) return@forEach
+                for (batch in pending.chunked(4)) {
+                    if (_activeMailbox.value.id != mailbox.id) break
                     val originals = batch.map { message ->
                         message.bodyText.ifBlank { MailTextFormatter.plainText(message.bodyHtml) }
                     }
