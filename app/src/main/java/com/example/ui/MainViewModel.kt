@@ -97,10 +97,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutoTranslateOnOpen(enabled: Boolean) {
         preferences.edit().putBoolean("auto_translate_on_open", enabled).apply()
         _autoTranslateOnOpen.value = enabled
-        showFeedback(
-            if (enabled) "English translation will run when you open an email."
-            else "Automatic translation on open is off."
-        )
+        if (enabled) {
+            showFeedback("English mode enabled. Queueing existing cached German messages.")
+            translateCachedMailboxToEnglish()
+        } else {
+            showFeedback("Automatic translation on open is off. Cached translations are kept.")
+        }
     }
 
     val availableMailboxes: StateFlow<List<MailboxAccount>> = repository.availableMailboxes
