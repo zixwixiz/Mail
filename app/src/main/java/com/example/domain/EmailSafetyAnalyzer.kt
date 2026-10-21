@@ -28,7 +28,7 @@ object EmailSafetyAnalyzer {
     )
 
     fun assess(message: MailMessageEntity): EmailSafetyAssessment {
-        val text = "${message.subject}\n${message.bodyText}"
+        val text = "${message.subject}\n${message.bodyText}\n${message.bodyHtml}"
             .lowercase(Locale.ROOT)
         val urgent = urgencyTerms.any(text::contains)
         val sensitive = sensitiveTerms.any(text::contains)
