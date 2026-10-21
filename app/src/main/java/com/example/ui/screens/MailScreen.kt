@@ -45,8 +45,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,7 +60,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.domain.MailBriefingBuilder
+import com.example.domain.MailTextFormatter
+import com.example.domain.MailTranslationFingerprint
+import com.example.domain.ReadingPriority
+import com.example.domain.ReadingQueueClassifier
 import com.example.data.local.entities.MailMessageEntity
+import com.example.data.local.entities.MailTranslationEntity
 import com.example.data.model.MailboxAccount
 import com.example.domain.TimezoneEngine
 import com.example.ui.theme.JluGold
@@ -68,6 +79,8 @@ fun MailScreen(
     activeMailbox: MailboxAccount,
     selectedFolder: String,
     messages: List<MailMessageEntity>,
+    allMailboxMessages: List<MailMessageEntity> = messages,
+    translations: List<MailTranslationEntity> = emptyList(),
     onSelectFolder: (String) -> Unit,
     onSelectEmail: (MailMessageEntity) -> Unit,
     onToggleFlag: (String, Boolean) -> Unit,
@@ -76,12 +89,19 @@ fun MailScreen(
     onSyncClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
+    val translationsById = remember(translations) { translations.associateBy { it.messageId } }
+    val visibleMessages = remember(messages) {
+        messages.filter { it.snoozedUntil == null || it.snoozedUntil <= System.currentTimeMillis() }
+    }
+
     val folders = listOf(
         "INBOX" to "Inbox",
         "SENT" to "Sent",
         "DRAFTS" to "Drafts",
         "TRASH" to "Trash",
-        "ARCHIVE" to "Archive"
+        "ARCHIVE" to "Archive",
+        "ATTACHMENTS" to "Attachments"
     )
 
     Scaffold(
@@ -116,13 +136,20 @@ fun MailScreen(
                     FilterChip(
                         selected = isSelected,
                         onClick = { onSelectFolder(folderKey) },
-                        label = { Text(folderLabel) },
+                        label = {
+                            Text(
+                                if (folderKey == "ATTACHMENTS") {
+                                    "$folderLabel (${allMailboxMessages.count { it.hasAttachments }})"
+                                } else folderLabel
+                            )
+                        },
                         leadingIcon = {
                             val icon = when (folderKey) {
                                 "INBOX" -> Icons.Default.Inbox
                                 "SENT" -> Icons.Default.Send
                                 "DRAFTS" -> Icons.Default.Drafts
                                 "TRASH" -> Icons.Default.Archive
+                                "ATTACHMENTS" -> Icons.Default.Attachment
                                 else -> Icons.Default.Archive
                             }
                             Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -206,8 +233,52 @@ fun MailScreen(
                 }
             }
 
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(
+                        text = "Daily & weekly briefing",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Today: ${briefing.todayCount} messages · ${briefing.todayUnreadCount} unread · ${briefing.todayActionCount} possible actions",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "This week: ${briefing.weekCount} messages · ${briefing.weekUnreadCount} unread · ${briefing.weekActionCount} possible actions",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (briefing.topActionMessages.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Possible actions today",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        briefing.topActionMessages.forEach { actionMessage ->
+                            TextButton(
+                                onClick = { onSelectEmail(actionMessage) },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    text = "${actionMessage.subject.ifBlank { "(no subject)" }} · ${actionMessage.senderName}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Message List or Empty State
-            if (messages.isEmpty()) {
+            if (visibleMessages.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -223,29 +294,115 @@ fun MailScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = if (activeMailbox.isConfigured) "No messages in $selectedFolder" else "Connect a mailbox to view messages",
+                            text = when {
+                                !activeMailbox.isConfigured -> "Connect a mailbox to view messages"
+                                messages.isNotEmpty() -> "All messages in this folder are snoozed"
+                                else -> "No messages in $selectedFolder"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (activeMailbox.isConfigured) "Mailbox: ${activeMailbox.displayName}" else "Use the Add / Connect button above to sign in",
+                            text = when {
+                                !activeMailbox.isConfigured -> "Use the Add / Connect button above to sign in"
+                                messages.isNotEmpty() -> "Snoozed messages return automatically when due"
+                                else -> "Mailbox: ${activeMailbox.displayName}"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
             } else {
+                var queueFilter by remember(selectedFolder) { mutableStateOf(ReadingQueueFilter.ALL) }
+                val filteredMessages = visibleMessages.filter { message ->
+                    val priority = ReadingQueueClassifier.classify(message).priority
+                    when (queueFilter) {
+                        ReadingQueueFilter.ALL -> true
+                        ReadingQueueFilter.ACTION -> priority == ReadingPriority.ACTION_REQUIRED
+                        ReadingQueueFilter.IMPORTANT -> priority == ReadingPriority.IMPORTANT
+                        ReadingQueueFilter.ROUTINE -> priority == ReadingPriority.ROUTINE
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(messages, key = { it.id }) { email ->
-                        EmailItemCard(
-                            email = email,
-                            onClick = { onSelectEmail(email) },
-                            onToggleFlag = { onToggleFlag(email.id, email.isFlagged) }
-                        )
+                    item(key = "reading_queue") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Smart reading queue",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Rules-based triage for deadlines, requests, and flagged mail. Check the original message before acting.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(ReadingQueueFilter.values().toList()) { filter ->
+                                        val count = when (filter) {
+                                            ReadingQueueFilter.ALL -> visibleMessages.size
+                                            ReadingQueueFilter.ACTION -> visibleMessages.count {
+                                                ReadingQueueClassifier.classify(it).priority == ReadingPriority.ACTION_REQUIRED
+                                            }
+                                            ReadingQueueFilter.IMPORTANT -> visibleMessages.count {
+                                                ReadingQueueClassifier.classify(it).priority == ReadingPriority.IMPORTANT
+                                            }
+                                            ReadingQueueFilter.ROUTINE -> visibleMessages.count {
+                                                ReadingQueueClassifier.classify(it).priority == ReadingPriority.ROUTINE
+                                            }
+                                        }
+                                        FilterChip(
+                                            selected = queueFilter == filter,
+                                            onClick = { queueFilter = filter },
+                                            label = { Text("${filter.label} ($count)") }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (filteredMessages.isEmpty()) {
+                        item(key = "empty_queue_filter") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No messages match this reading queue.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        items(filteredMessages, key = { it.id }) { email ->
+                            val cachedTranslation = translationsById[email.id]?.takeIf {
+                                it.targetLanguage == "en" &&
+                                    it.originalFingerprint == MailTranslationFingerprint.forMessage(email)
+                            }
+                            EmailItemCard(
+                                email = email,
+                                translation = cachedTranslation,
+                                onClick = { onSelectEmail(email) },
+                                onToggleFlag = { onToggleFlag(email.id, email.isFlagged) }
+                            )
+                        }
                     }
                 }
             }
@@ -253,9 +410,18 @@ fun MailScreen(
     }
 }
 
+
+private enum class ReadingQueueFilter(val label: String) {
+    ALL("All"),
+    ACTION("Action needed"),
+    IMPORTANT("Important"),
+    ROUTINE("Routine")
+}
+
 @Composable
 fun EmailItemCard(
     email: MailMessageEntity,
+    translation: MailTranslationEntity? = null,
     onClick: () -> Unit,
     onToggleFlag: () -> Unit,
     modifier: Modifier = Modifier
@@ -320,7 +486,7 @@ fun EmailItemCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = email.subject,
+                text = MailTextFormatter.plainText(translation?.translatedSubject?.takeIf { it.isNotBlank() } ?: email.subject),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (!email.isRead) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
@@ -331,12 +497,30 @@ fun EmailItemCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = email.bodyText,
+                text = MailTextFormatter.plainText(translation?.translatedPreview?.takeIf { it.isNotBlank() } ?: email.bodyText.ifBlank { email.bodyHtml }),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+
+            if (translation?.isPartial == true) {
+                Text(
+                    text = "Translation may be incomplete",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
+            if (email.attachments.isNotBlank()) {
+                Text(
+                    text = "Attachments: " + email.attachments.lineSequence().take(2).joinToString(", "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             Spacer(modifier = Modifier.height(6.dp))
 
@@ -376,3 +560,4 @@ fun EmailItemCard(
         }
     }
 }
+

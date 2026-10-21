@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -19,6 +21,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,13 +50,32 @@ fun ComposeEmailDialog(
     activeMailbox: MailboxAccount,
     onDismiss: () -> Unit,
     onSend: (subject: String, recipients: String, body: String, isDraft: Boolean) -> Unit,
+    initialSubject: String = "",
+    initialRecipient: String = "",
+    initialBody: String = "",
+    dialogTitle: String = "New Message",
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var recipient by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
+    var recipient by remember(initialRecipient) { mutableStateOf(initialRecipient) }
+    var subject by remember(initialSubject) { mutableStateOf(initialSubject) }
+    var body by remember(initialBody) { mutableStateOf(initialBody) }
+
+    val quickReplies = listOf(
+        "Thanks for the update. I'll review this and get back to you.",
+        "Could you please clarify the deadline and next steps?",
+        "I confirm receipt of your message. Thank you."
+    )
+    fun insertQuickReply(template: String) {
+        val quoteStart = listOf(
+            body.indexOf("\n\n--- Original message ---").takeIf { it >= 0 },
+            body.indexOf("\n\n--- Forwarded message ---").takeIf { it >= 0 }
+        ).filterNotNull().minOrNull() ?: body.length
+        val editableText = body.substring(0, quoteStart).trim()
+        val quotedText = body.substring(quoteStart)
+        body = if (editableText.isBlank()) "$template$quotedText" else "$editableText\n\n$template$quotedText"
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -71,7 +93,7 @@ fun ComposeEmailDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "New Message",
+                    text = dialogTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -144,6 +166,34 @@ fun ComposeEmailDialog(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (dialogTitle == "Reply") {
+                Text(
+                    text = "Quick reply templates",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(quickReplies) { template ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { insertQuickReply(template) },
+                            label = {
+                                Text(
+                                    when (quickReplies.indexOf(template)) {
+                                        0 -> "Thanks"
+                                        1 -> "Clarify"
+                                        else -> "Confirm receipt"
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = body,

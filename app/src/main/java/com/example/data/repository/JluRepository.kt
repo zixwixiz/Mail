@@ -103,6 +103,9 @@ class JluRepository(
     suspend fun toggleFlag(messageId: String, isFlagged: Boolean) =
         database.mailDao().setFlagState(messageId, isFlagged)
 
+    suspend fun setSnoozedUntil(messageId: String, snoozedUntil: Long?) =
+        database.mailDao().setSnoozedUntil(messageId, snoozedUntil)
+
     suspend fun deleteMessage(messageId: String) =
         database.mailDao().moveToTrash(messageId)
 

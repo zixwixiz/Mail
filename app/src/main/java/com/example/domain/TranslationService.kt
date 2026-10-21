@@ -1,5 +1,6 @@
 package com.example.domain
 
+import java.util.Locale
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
@@ -16,7 +17,8 @@ data class TranslationResult(
     val originalText: String,
     val translatedText: String,
     val sourceLang: String = "German (de)",
-    val targetLang: TargetLanguage
+    val targetLang: TargetLanguage,
+    val isPartial: Boolean = false
 )
 
 /**
@@ -26,6 +28,26 @@ data class TranslationResult(
  * Coverage is intentionally limited; text without matching local rules can remain untranslated.
  */
 object TranslationService {
+    /**
+     * Conservative language heuristic used only to avoid auto-translating obvious non-German mail.
+     * It is not a general-purpose language detector; uncertain messages are left untouched.
+     */
+    fun isLikelyGerman(text: String): Boolean {
+        if (text.isBlank()) return false
+        val normalized = " " + text.lowercase(Locale.GERMAN).replace(Regex("\\s+"), " ") + " "
+        if (normalized.contains(" sehr geehrte ") ||
+            normalized.contains(" mit freundlichen grüßen ") ||
+            normalized.contains(" liebe studierende ")
+        ) return true
+        val markers = listOf(
+            " der ", " die ", " das ", " und ", " nicht ", " bitte ", " für ",
+            " mit ", " ist ", " sind ", " werden ", " wurde ", " frist", " prüfungsamt"
+        )
+        val markerCount = markers.count(normalized::contains)
+        val germanCharacters = Regex("[äöüß]").findAll(normalized).count()
+        return markerCount >= 2 || germanCharacters >= 2
+    }
+
     val SUPPORTED_LANGUAGES = listOf(
         TargetLanguage("en", "English", "🇬🇧"),
         TargetLanguage("hi", "Hindi (हिन्दी)", "🇮🇳"),
@@ -38,11 +60,17 @@ object TranslationService {
     suspend fun translateGermanAcademicTextOnline(
         text: String,
         targetLanguage: TargetLanguage
-    ): TranslationResult {
-        if (text.isBlank()) {
-            return TranslationResult(text, text, targetLang = targetLanguage)
-        }
+    ): TranslationResult = translateGermanAcademicTextsOnline(listOf(text), targetLanguage).first()
 
+    /**
+     * Translates a batch using one ML Kit translator/model session, reducing repeated setup
+     * when processing many cached messages. Phrase-based fallback remains explicitly limited.
+     */
+    suspend fun translateGermanAcademicTextsOnline(
+        texts: List<String>,
+        targetLanguage: TargetLanguage
+    ): List<TranslationResult> {
+        if (texts.isEmpty()) return emptyList()
         val targetCode = targetLanguage.code
         val mlTarget = when (targetCode) {
             "en" -> TranslateLanguage.ENGLISH
@@ -53,29 +81,35 @@ object TranslationService {
             "es" -> TranslateLanguage.SPANISH
             else -> null
         }
-
-        if (mlTarget == null) {
-            return translateGermanAcademicText(text, targetLanguage)
-        }
+        if (mlTarget == null) return texts.map { translateGermanAcademicText(it, targetLanguage).copy(isPartial = true) }
 
         val options = TranslatorOptions.Builder()
             .setSourceLanguage(TranslateLanguage.GERMAN)
             .setTargetLanguage(mlTarget)
             .build()
         val translator = Translation.getClient(options)
-
         return try {
             translator.downloadModelIfNeeded(DownloadConditions.Builder().build()).await()
-            val translated = translator.translate(text).await()
-            TranslationResult(
-                originalText = text,
-                translatedText = translated,
-                sourceLang = "German (de)",
-                targetLang = targetLanguage
-            )
+            texts.map { text ->
+                if (text.isBlank()) {
+                    TranslationResult(text, text, targetLang = targetLanguage)
+                } else {
+                    runCatching { translator.translate(text).await() }
+                        .fold(
+                            onSuccess = { translated ->
+                                TranslationResult(
+                                    originalText = text,
+                                    translatedText = translated,
+                                    sourceLang = "German (de)",
+                                    targetLang = targetLanguage
+                                )
+                            },
+                            onFailure = { translateGermanAcademicText(text, targetLanguage).copy(isPartial = true) }
+                        )
+                }
+            }
         } catch (_: Exception) {
-            // Keep the app useful offline / when the ML model is unavailable.
-            translateGermanAcademicText(text, targetLanguage)
+            texts.map { translateGermanAcademicText(it, targetLanguage).copy(isPartial = true) }
         } finally {
             translator.close()
         }

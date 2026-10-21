@@ -12,27 +12,31 @@ import com.example.data.local.dao.MailDao
 import com.example.data.local.dao.NoteDao
 import com.example.data.local.dao.VerificationDao
 import com.example.data.local.dao.TaskDao
+import com.example.data.local.dao.TranslationDao
 import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
+import com.example.data.local.entities.MailTranslationEntity
 import com.example.data.local.entities.NoteEntity
 import com.example.data.local.entities.TaskEntity
 
 @Database(
     entities = [
         MailMessageEntity::class,
+        MailTranslationEntity::class,
         CalendarEventEntity::class,
         TaskEntity::class,
         ContactEntity::class,
         NoteEntity::class,
         EndpointVerificationEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mailDao(): MailDao
+    abstract fun translationDao(): TranslationDao
     abstract fun calendarDao(): CalendarDao
     abstract fun taskDao(): TaskDao
     abstract fun contactDao(): ContactDao
@@ -43,6 +47,33 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE mail_messages ADD COLUMN attachments TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mail_messages ADD COLUMN snoozedUntil INTEGER")
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS mail_translations (
+                        mailboxId TEXT NOT NULL,
+                        messageId TEXT NOT NULL,
+                        targetLanguage TEXT NOT NULL,
+                        originalFingerprint TEXT NOT NULL,
+                        translatedSubject TEXT NOT NULL,
+                        translatedPreview TEXT NOT NULL,
+                        translatedBody TEXT NOT NULL,
+                        isPartial INTEGER NOT NULL,
+                        updatedTimestamp INTEGER NOT NULL,
+                        PRIMARY KEY(mailboxId, messageId, targetLanguage)
+                    )
+                    """.trimIndent()
+                )
             }
         }
 
@@ -91,7 +122,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "jlu_mobile.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                 INSTANCE = instance
                 instance

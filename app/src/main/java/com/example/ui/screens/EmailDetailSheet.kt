@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.StarOutline
@@ -59,7 +60,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.graphics.Color as AndroidColor
@@ -67,8 +67,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entities.MailMessageEntity
+import com.example.domain.DetectedEmailChange
+import com.example.domain.EmailSafetyAnalyzer
+import com.example.domain.EmailSafetyLevel
+import com.example.domain.FollowUpDetector
+import com.example.domain.MailQuickSummaryBuilder
+import com.example.domain.MailTextFormatter
 import com.example.domain.SmartActionSuggestion
 import com.example.domain.TargetLanguage
+import com.example.domain.ThreadSummaryBuilder
 import com.example.domain.TimezoneEngine
 import com.example.domain.TranslationResult
 import com.example.domain.TranslationService
@@ -79,13 +86,16 @@ import com.example.ui.theme.JluWarning
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailDetailSheet(
     email: MailMessageEntity,
+    threadMessages: List<MailMessageEntity>,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
+    onSnooze: (Long) -> Unit,
     onToggleFlag: () -> Unit,
     onReply: () -> Unit,
     onForward: () -> Unit,
@@ -93,13 +103,27 @@ fun EmailDetailSheet(
     currentTranslation: TranslationResult?,
     onClearTranslation: () -> Unit,
     smartSuggestions: List<SmartActionSuggestion>,
+    detectedChanges: List<DetectedEmailChange>,
     onApplyCalendarSuggestion: (SmartActionSuggestion.CalendarSuggestion) -> Unit,
     onApplyTaskSuggestion: (SmartActionSuggestion.TaskSuggestion) -> Unit,
+    onCreateFollowUpTask: (String) -> Unit,
+    userLocalZoneId: String,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showLangPicker by remember { mutableStateOf(false) }
-    var allowEmailJavaScript by remember(email.id) { mutableStateOf(false) }
+    var showSnoozeMenu by remember(email.id) { mutableStateOf(false) }
+    var showOriginalHtml by remember(email.id) { mutableStateOf(false) }
+    val safetyAssessment = remember(email.id, email.subject, email.bodyText) {
+        EmailSafetyAnalyzer.assess(email)
+    }
+    val quickSummary = remember(email.id, email.subject, email.bodyText, email.bodyHtml, email.attachments) {
+        MailQuickSummaryBuilder.build(email)
+    }
+    val threadSummary = remember(threadMessages) { ThreadSummaryBuilder.build(threadMessages) }
+    val followUpPromise = remember(email.id, email.bodyText, email.bodyHtml) {
+        FollowUpDetector.detect(email)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -130,6 +154,37 @@ fun EmailDetailSheet(
                             tint = if (email.isFlagged) JluGold else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Box {
+                        IconButton(onClick = { showSnoozeMenu = true }) {
+                            Icon(Icons.Default.Schedule, contentDescription = "Snooze")
+                        }
+                        DropdownMenu(
+                            expanded = showSnoozeMenu,
+                            onDismissRequest = { showSnoozeMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("In 3 hours") },
+                                onClick = {
+                                    onSnooze(3L * 60 * 60 * 1000)
+                                    showSnoozeMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Tomorrow (24 hours)") },
+                                onClick = {
+                                    onSnooze(24L * 60 * 60 * 1000)
+                                    showSnoozeMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Next week (7 days)") },
+                                onClick = {
+                                    onSnooze(7L * 24 * 60 * 60 * 1000)
+                                    showSnoozeMenu = false
+                                }
+                            )
+                        }
+                    }
                     IconButton(onClick = onDelete) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -144,7 +199,7 @@ fun EmailDetailSheet(
 
             // Subject
             Text(
-                text = email.subject,
+                text = MailTextFormatter.plainText(email.subject),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -275,6 +330,184 @@ fun EmailDetailSheet(
                 }
             }
 
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Quick read",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = quickSummary.summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    quickSummary.keyPoints.forEach { point ->
+                        Text(
+                            text = "• $point",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = "Extractive overview from message text; verify important details in the original.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            threadSummary?.let { summary ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Conversation context · ${summary.messageCount} messages",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (summary.participants.isNotEmpty()) {
+                            Text(
+                                text = "Participants: ${summary.participants.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = "Latest: ${summary.latestSubject}",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Text(
+                            text = summary.latestSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            followUpPromise?.let { promise ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Possible follow-up",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Detected promise: \"$promise\"",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Button(
+                            onClick = { onCreateFollowUpTask(promise) },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("Create follow-up task · 3 days")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            if (safetyAssessment.level != EmailSafetyLevel.NONE) {
+                val highRiskSignals = safetyAssessment.level == EmailSafetyLevel.HIGH
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (highRiskSignals) {
+                            MaterialTheme.colorScheme.errorContainer
+                        } else {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        }
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = null,
+                                tint = if (highRiskSignals) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (highRiskSignals) "Multiple security warning signals" else "Review this email carefully",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        safetyAssessment.reasons.forEach { reason ->
+                            Text(
+                                text = "• $reason",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = "This is a heuristic warning, not proof that the email is malicious or safe.",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            if (detectedChanges.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Potential changes since the previous email",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        detectedChanges.forEach { change ->
+                            Text(
+                                text = "${change.label}: ${change.previousValue} → ${change.currentValue}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                        Text(
+                            text = "Only matching dates, times, amounts, rooms, and locations are compared. Verify the original thread.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
             // Blueprint Section 25: Smart Extraction Suggestions
             if (smartSuggestions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -306,6 +539,21 @@ fun EmailDetailSheet(
                         smartSuggestions.forEach { suggestion ->
                             when (suggestion) {
                                 is SmartActionSuggestion.CalendarSuggestion -> {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                        Text(
+                                            text = suggestion.confidenceReason,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Source time: ${formatScheduleTime(suggestion.startInstant, suggestion.sourceTimeZoneId)}",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            text = "Your local time: ${formatScheduleTime(suggestion.startInstant, userLocalZoneId)}",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
                                     Button(
                                         onClick = { onApplyCalendarSuggestion(suggestion) },
                                         colors = ButtonDefaults.buttonColors(
@@ -323,6 +571,12 @@ fun EmailDetailSheet(
                                     }
                                 }
                                 is SmartActionSuggestion.TaskSuggestion -> {
+                                    Text(
+                                        text = suggestion.confidenceReason,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
                                     Button(
                                         onClick = { onApplyTaskSuggestion(suggestion) },
                                         colors = ButtonDefaults.buttonColors(
@@ -389,7 +643,7 @@ fun EmailDetailSheet(
                 }
             }
 
-            // Body rendering (HTML mail, with scripts off unless explicitly enabled)
+            // Reader View is the default for comfortable, privacy-friendly reading.
             Spacer(modifier = Modifier.height(10.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
@@ -400,45 +654,55 @@ fun EmailDetailSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("HTML email", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton(onClick = { allowEmailJavaScript = !allowEmailJavaScript }) {
-                        Text(if (allowEmailJavaScript) "Disable scripts" else "Enable scripts")
+                    Text(
+                        if (showOriginalHtml) "Original HTML" else "Reader View",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = { showOriginalHtml = !showOriginalHtml }) {
+                        Text(if (showOriginalHtml) "Reader View" else "View Original HTML")
                     }
                 }
-                if (allowEmailJavaScript) {
+                if (showOriginalHtml) {
                     Text(
-                        "Warning: scripts in email can track you or run untrusted code. Only enable them for emails you trust.",
+                        "Scripts and automatic remote-image loading are disabled for privacy.",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    AndroidView(
+                        modifier = Modifier.fillMaxWidth().height(420.dp),
+                        factory = { context ->
+                            WebView(context).apply {
+                                setBackgroundColor(AndroidColor.TRANSPARENT)
+                                webViewClient = WebViewClient()
+                                settings.javaScriptEnabled = false
+                                settings.domStorageEnabled = false
+                                settings.allowFileAccess = false
+                                settings.allowContentAccess = false
+                                settings.loadsImagesAutomatically = false
+                            }
+                        },
+                        update = { webView ->
+                            webView.settings.javaScriptEnabled = false
+                            webView.settings.domStorageEnabled = false
+                            val html = email.bodyHtml
+                            webView.loadDataWithBaseURL(
+                                "https://owa.uni-giessen.de/",
+                                "<!doctype html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{font-family: sans-serif; font-size:16px; line-height:1.5; overflow-wrap:anywhere; color:#202124} img,table{max-width:100%;height:auto} pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>$html</body></html>",
+                                "text/html",
+                                "UTF-8",
+                                null
+                            )
+                        }
+                    )
+                } else {
+                    Text(
+                        text = MailTextFormatter.plainText(email.bodyText.ifBlank { email.bodyHtml }),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 24.sp
                     )
                 }
-                AndroidView(
-                    modifier = Modifier.fillMaxWidth().height(420.dp),
-                    factory = { context ->
-                        WebView(context).apply {
-                            setBackgroundColor(AndroidColor.TRANSPARENT)
-                            webViewClient = WebViewClient()
-                            webChromeClient = WebChromeClient()
-                            settings.javaScriptEnabled = allowEmailJavaScript
-                            settings.domStorageEnabled = allowEmailJavaScript
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            settings.loadsImagesAutomatically = true
-                        }
-                    },
-                    update = { webView ->
-                        webView.settings.javaScriptEnabled = allowEmailJavaScript
-                        webView.settings.domStorageEnabled = allowEmailJavaScript
-                        val html = email.bodyHtml
-                        webView.loadDataWithBaseURL(
-                            "https://owa.uni-giessen.de/",
-                            "<!doctype html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{font-family: sans-serif; font-size:16px; line-height:1.5; overflow-wrap:anywhere; color:#202124} img,table{max-width:100%;height:auto} pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>$html</body></html>",
-                            "text/html",
-                            "UTF-8",
-                            null
-                        )
-                    }
-                )
             } else if (currentTranslation != null) {
                 // Translation Badge
                 Surface(
@@ -451,6 +715,14 @@ fun EmailDetailSheet(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                if (currentTranslation.isPartial) {
+                    Text(
+                        text = "Translation may be incomplete. Compare with the original before acting on important details.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -470,7 +742,7 @@ fun EmailDetailSheet(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = email.bodyText,
+                    text = MailTextFormatter.plainText(email.bodyText.ifBlank { email.bodyHtml }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -514,3 +786,9 @@ fun EmailDetailSheet(
         }
     }
 }
+
+
+private fun formatScheduleTime(instant: Long, zoneId: String): String =
+    SimpleDateFormat("EEE, d MMM yyyy · HH:mm z", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone(zoneId)
+    }.format(Date(instant))

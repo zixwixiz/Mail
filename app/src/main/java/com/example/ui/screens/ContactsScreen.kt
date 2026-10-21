@@ -28,7 +28,9 @@ import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entities.ContactEntity
+import com.example.domain.ContactCandidate
 import com.example.ui.theme.JluGold
 import com.example.ui.theme.JluNavy
 import com.example.ui.theme.JluNavyLight
@@ -60,6 +63,10 @@ import com.example.ui.theme.JluNavyLight
 @Composable
 fun ContactsScreen(
     contacts: List<ContactEntity>,
+    contactCandidates: List<ContactCandidate> = emptyList(),
+    onScanEmails: () -> Unit = {},
+    onSaveCandidate: (ContactCandidate) -> Unit = {},
+    onIgnoreCandidate: (ContactCandidate) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -105,6 +112,79 @@ fun ContactsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = "Discover contacts from email",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Review suggestions before saving. Existing contacts and your own address are skipped.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Button(
+                    onClick = onScanEmails,
+                    modifier = Modifier.testTag("scan_emails_for_contacts_button")
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Scan Emails")
+                }
+            }
+        }
+
+        if (contactCandidates.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Review ${contactCandidates.size} contact suggestion(s)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            items(contactCandidates, key = { "candidate_${it.email.lowercase()}" }) { candidate ->
+                ElevatedCard(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(candidate.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(candidate.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        if (candidate.phone.isNotBlank()) {
+                            Text("Phone: ${candidate.phone}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (candidate.organization.isNotBlank()) {
+                            Text(candidate.organization, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(
+                            text = "Found in: ${candidate.sourceSubject.ifBlank { "(no subject)" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(onClick = { onSaveCandidate(candidate) }) { Text("Save contact") }
+                            OutlinedButton(onClick = { onIgnoreCandidate(candidate) }) { Text("Ignore") }
+                        }
+                    }
+                }
             }
         }
 

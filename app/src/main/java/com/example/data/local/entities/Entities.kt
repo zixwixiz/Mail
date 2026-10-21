@@ -20,7 +20,8 @@ data class MailMessageEntity(
     val isFlagged: Boolean,
     val hasAttachments: Boolean,
     val attachments: String = "", // newline-separated attachment names/sizes
-    val category: String = "Normal"
+    val category: String = "Normal",
+    val snoozedUntil: Long? = null // Epoch ms; null means not snoozed
 )
 
 @Entity(tableName = "calendar_events")

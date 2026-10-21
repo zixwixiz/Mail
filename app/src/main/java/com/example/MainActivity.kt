@@ -68,6 +68,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.entities.MailMessageEntity
+import com.example.domain.MailTextFormatter
 import com.example.ui.MainViewModel
 import com.example.data.sync.MailSyncScheduler
 import com.example.ui.NavigationTab
@@ -121,18 +123,24 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val selectedFolder by viewModel.selectedFolder.collectAsStateWithLifecycle()
     val messages by viewModel.currentMessages.collectAsStateWithLifecycle()
+    val allMailboxMessages by viewModel.allMailboxMessages.collectAsStateWithLifecycle()
+    val cachedTranslations by viewModel.cachedTranslations.collectAsStateWithLifecycle()
+    val translationProgress by viewModel.translationProgress.collectAsStateWithLifecycle()
     val events by viewModel.currentEvents.collectAsStateWithLifecycle()
     val tasks by viewModel.currentTasks.collectAsStateWithLifecycle()
     val contacts by viewModel.currentContacts.collectAsStateWithLifecycle()
+    val contactCandidates by viewModel.contactCandidates.collectAsStateWithLifecycle()
     val notes by viewModel.currentNotes.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
     val verificationSummary by viewModel.verificationSummary.collectAsStateWithLifecycle()
     val savedVerification by viewModel.savedVerification.collectAsStateWithLifecycle()
     val userLocalZoneId by viewModel.userLocalZoneId.collectAsStateWithLifecycle()
+    val autoTranslateOnOpen by viewModel.autoTranslateOnOpen.collectAsStateWithLifecycle()
 
     val selectedEmail by viewModel.selectedEmail.collectAsStateWithLifecycle()
     val currentTranslation by viewModel.currentTranslation.collectAsStateWithLifecycle()
     val smartSuggestions by viewModel.smartSuggestions.collectAsStateWithLifecycle()
+    val detectedChanges by viewModel.detectedChanges.collectAsStateWithLifecycle()
     val uiFeedback by viewModel.uiFeedback.collectAsStateWithLifecycle()
 
     val isSearchOpen by viewModel.isSearchOpen.collectAsStateWithLifecycle()
@@ -144,8 +152,40 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val isCreateTaskOpen by viewModel.isCreateTaskOpen.collectAsStateWithLifecycle()
     val isCreateNoteOpen by viewModel.isCreateNoteOpen.collectAsStateWithLifecycle()
     var isSettingsOpen by remember { mutableStateOf(false) }
+    var composeInitialSubject by remember { mutableStateOf("") }
+    var composeInitialRecipient by remember { mutableStateOf("") }
+    var composeInitialBody by remember { mutableStateOf("") }
+    var composeDialogTitle by remember { mutableStateOf("New Message") }
+
+    fun clearComposeContext() {
+        composeInitialSubject = ""
+        composeInitialRecipient = ""
+        composeInitialBody = ""
+        composeDialogTitle = "New Message"
+    }
+
+    fun prepareReply(message: MailMessageEntity, forward: Boolean) {
+        val prefix = if (forward) "Fwd:" else "Re:"
+        composeInitialSubject = if (message.subject.startsWith(prefix, ignoreCase = true)) {
+            message.subject
+        } else {
+            "$prefix ${message.subject}".trim()
+        }
+        composeInitialRecipient = if (forward) "" else message.senderEmail
+        val originalBody = MailTextFormatter.plainText(message.bodyText.ifBlank { message.bodyHtml }).take(4000)
+        composeInitialBody = if (forward) {
+            "\n\n--- Forwarded message ---\nFrom: ${message.senderName} <${message.senderEmail}>\nSubject: ${message.subject}\n\n$originalBody"
+        } else {
+            "\n\n--- Original message ---\n$originalBody"
+        }
+        composeDialogTitle = if (forward) "Forward Message" else "Reply"
+    }
 
     // Show feedback messages
+    LaunchedEffect(isComposeOpen) {
+        if (!isComposeOpen) clearComposeContext()
+    }
+
     LaunchedEffect(uiFeedback) {
         uiFeedback?.let {
             snackbarHostState.showSnackbar(it.message)
@@ -321,10 +361,12 @@ fun JluMobileApp(viewModel: MainViewModel) {
                         activeMailbox = activeMailbox,
                         selectedFolder = selectedFolder,
                         messages = messages,
+                        allMailboxMessages = allMailboxMessages,
+                        translations = cachedTranslations,
                         onSelectFolder = { viewModel.selectFolder(it) },
                         onSelectEmail = { viewModel.selectEmail(it) },
                         onToggleFlag = { id, flag -> viewModel.toggleEmailFlag(id, flag) },
-                        onComposeClick = { viewModel.setComposeOpen(true) },
+                        onComposeClick = { clearComposeContext(); viewModel.setComposeOpen(true) },
                         isSyncing = isSyncing,
                         onSyncClick = { viewModel.syncCurrentFolder() }
                     )
@@ -348,7 +390,13 @@ fun JluMobileApp(viewModel: MainViewModel) {
                     )
                 }
                 NavigationTab.CONTACTS -> {
-                    ContactsScreen(contacts = contacts)
+                    ContactsScreen(
+                        contacts = contacts,
+                        contactCandidates = contactCandidates,
+                        onScanEmails = { viewModel.scanContactsFromEmails() },
+                        onSaveCandidate = { viewModel.saveDiscoveredContact(it) },
+                        onIgnoreCandidate = { viewModel.ignoreDiscoveredContact(it) }
+                    )
                 }
                 NavigationTab.NOTES -> {
                     NotesScreen(
@@ -374,27 +422,43 @@ fun JluMobileApp(viewModel: MainViewModel) {
     if (selectedEmail != null) {
         EmailDetailSheet(
             email = selectedEmail!!,
+            threadMessages = allMailboxMessages.filter { it.threadId == selectedEmail!!.threadId },
             onDismiss = { viewModel.selectEmail(null) },
             onDelete = { viewModel.deleteEmail(selectedEmail!!.id) },
+            onSnooze = { durationMillis ->
+                viewModel.snoozeEmail(selectedEmail!!.id, durationMillis)
+                viewModel.selectEmail(null)
+            },
             onToggleFlag = { viewModel.toggleEmailFlag(selectedEmail!!.id, selectedEmail!!.isFlagged) },
             onReply = {
-                viewModel.selectEmail(null)
-                viewModel.setComposeOpen(true)
+                selectedEmail?.let { message ->
+                    prepareReply(message, forward = false)
+                    viewModel.selectEmail(null)
+                    viewModel.setComposeOpen(true)
+                }
             },
             onForward = {
-                viewModel.selectEmail(null)
-                viewModel.setComposeOpen(true)
+                selectedEmail?.let { message ->
+                    prepareReply(message, forward = true)
+                    viewModel.selectEmail(null)
+                    viewModel.setComposeOpen(true)
+                }
             },
             onTranslate = { targetLang -> viewModel.translateCurrentEmail(targetLang) },
             currentTranslation = currentTranslation,
             onClearTranslation = { viewModel.clearTranslation() },
             smartSuggestions = smartSuggestions,
+            detectedChanges = detectedChanges,
             onApplyCalendarSuggestion = { suggestion ->
                 viewModel.applyCalendarSuggestion(suggestion)
             },
             onApplyTaskSuggestion = { suggestion ->
                 viewModel.applyTaskSuggestion(suggestion)
-            }
+            },
+            onCreateFollowUpTask = { promise ->
+                viewModel.createFollowUpTask(selectedEmail!!, promise)
+            },
+            userLocalZoneId = userLocalZoneId
         )
     }
 
@@ -402,7 +466,14 @@ fun JluMobileApp(viewModel: MainViewModel) {
     if (isComposeOpen) {
         ComposeEmailDialog(
             activeMailbox = activeMailbox,
-            onDismiss = { viewModel.setComposeOpen(false) },
+            initialSubject = composeInitialSubject,
+            initialRecipient = composeInitialRecipient,
+            initialBody = composeInitialBody,
+            dialogTitle = composeDialogTitle,
+            onDismiss = {
+                viewModel.setComposeOpen(false)
+                clearComposeContext()
+            },
             onSend = { subject, recipient, body, isDraft ->
                 viewModel.sendEmail(subject, recipient, body, isDraft)
             }
@@ -457,6 +528,10 @@ fun JluMobileApp(viewModel: MainViewModel) {
         ) {
             SettingsScreen(
                 activeMailbox = activeMailbox,
+                autoTranslateOnOpen = autoTranslateOnOpen,
+                onAutoTranslateOnOpenChange = { viewModel.setAutoTranslateOnOpen(it) },
+                translationProgress = translationProgress,
+                onTranslateCachedMailbox = { viewModel.translateCachedMailboxToEnglish() },
                 onShareDiagnostics = {
                     val report = com.example.ui.DiagnosticsFormatter.sanitized(
                         verificationSummary,

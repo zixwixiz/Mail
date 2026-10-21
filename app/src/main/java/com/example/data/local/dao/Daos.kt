@@ -9,6 +9,7 @@ import com.example.data.local.entities.CalendarEventEntity
 import com.example.data.local.entities.ContactEntity
 import com.example.data.local.entities.EndpointVerificationEntity
 import com.example.data.local.entities.MailMessageEntity
+import com.example.data.local.entities.MailTranslationEntity
 import com.example.data.local.entities.NoteEntity
 import com.example.data.local.entities.TaskEntity
 import kotlinx.coroutines.flow.Flow
@@ -42,8 +43,23 @@ interface MailDao {
     @Query("UPDATE mail_messages SET isFlagged = :isFlagged WHERE id = :id")
     suspend fun setFlagState(id: String, isFlagged: Boolean)
 
+    @Query("UPDATE mail_messages SET snoozedUntil = :snoozedUntil WHERE id = :id")
+    suspend fun setSnoozedUntil(id: String, snoozedUntil: Long?)
+
     @Query("UPDATE mail_messages SET folder = 'TRASH' WHERE id = :id")
     suspend fun moveToTrash(id: String)
+}
+
+@Dao
+interface TranslationDao {
+    @Query("SELECT * FROM mail_translations WHERE mailboxId = :mailboxId AND targetLanguage = :targetLanguage ORDER BY updatedTimestamp DESC")
+    fun getTranslationsForMailbox(mailboxId: String, targetLanguage: String): Flow<List<MailTranslationEntity>>
+
+    @Query("SELECT * FROM mail_translations WHERE mailboxId = :mailboxId AND messageId = :messageId AND targetLanguage = :targetLanguage LIMIT 1")
+    suspend fun getTranslation(mailboxId: String, messageId: String, targetLanguage: String): MailTranslationEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertTranslation(translation: MailTranslationEntity)
 }
 
 @Dao
