@@ -144,9 +144,11 @@ fun MailScreen(
                         onClick = { onSelectFolder(folderKey) },
                         label = {
                             Text(
-                                if (folderKey == "ATTACHMENTS") {
-                                    "$folderLabel (${allMailboxMessages.count { it.hasAttachments }})"
-                                } else folderLabel
+                                when (folderKey) {
+                                    "ATTACHMENTS" -> "$folderLabel (${allMailboxMessages.count { it.hasAttachments }})"
+                                    "SNOOZED" -> "$folderLabel (${allMailboxMessages.count { it.snoozedUntil != null && it.snoozedUntil > System.currentTimeMillis() }})"
+                                    else -> folderLabel
+                                }
                             )
                         },
                         leadingIcon = {
