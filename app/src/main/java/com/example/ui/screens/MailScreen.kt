@@ -91,8 +91,12 @@ fun MailScreen(
 ) {
     val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
     val translationsById = remember(translations) { translations.associateBy { it.messageId } }
-    val visibleMessages = remember(messages) {
-        messages.filter { it.snoozedUntil == null || it.snoozedUntil <= System.currentTimeMillis() }
+    val visibleMessages = remember(messages, selectedFolder) {
+        if (selectedFolder == "SNOOZED") {
+            messages.filter { it.snoozedUntil != null && it.snoozedUntil > System.currentTimeMillis() }
+        } else {
+            messages.filter { it.snoozedUntil == null || it.snoozedUntil <= System.currentTimeMillis() }
+        }
     }
 
     val folders = listOf(
@@ -101,6 +105,7 @@ fun MailScreen(
         "DRAFTS" to "Drafts",
         "TRASH" to "Trash",
         "ARCHIVE" to "Archive",
+        "SNOOZED" to "Snoozed",
         "ATTACHMENTS" to "Attachments"
     )
 
@@ -150,6 +155,7 @@ fun MailScreen(
                                 "DRAFTS" -> Icons.Default.Drafts
                                 "TRASH" -> Icons.Default.Archive
                                 "ATTACHMENTS" -> Icons.Default.Attachment
+                                "SNOOZED" -> Icons.Default.Schedule
                                 else -> Icons.Default.Archive
                             }
                             Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -296,6 +302,7 @@ fun MailScreen(
                         Text(
                             text = when {
                                 !activeMailbox.isConfigured -> "Connect a mailbox to view messages"
+                                selectedFolder == "SNOOZED" -> "No snoozed messages"
                                 messages.isNotEmpty() -> "All messages in this folder are snoozed"
                                 else -> "No messages in $selectedFolder"
                             },
@@ -305,6 +312,7 @@ fun MailScreen(
                         Text(
                             text = when {
                                 !activeMailbox.isConfigured -> "Use the Add / Connect button above to sign in"
+                                selectedFolder == "SNOOZED" -> "Snoozed messages return to their folders when due"
                                 messages.isNotEmpty() -> "Snoozed messages return automatically when due"
                                 else -> "Mailbox: ${activeMailbox.displayName}"
                             },
