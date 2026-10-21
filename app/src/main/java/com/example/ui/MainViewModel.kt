@@ -427,6 +427,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             if (hasCurrentEnglishCache || shouldAutoTranslate) {
                 translateCurrentEmail(TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" })
+            } else {
+                viewModelScope.launch {
+                    val cached = database.translationDao().getTranslation(_activeMailbox.value.id, email.id, "en")
+                    if (
+                        cached != null &&
+                        cached.originalFingerprint == MailTranslationFingerprint.forMessage(email) &&
+                        _selectedEmail.value?.id == email.id
+                    ) {
+                        val originalBody = email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }
+                        _targetLanguage.value = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
+                        _currentTranslation.value = TranslationResult(
+                            originalText = originalBody,
+                            translatedText = cached.translatedBody,
+                            targetLang = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" },
+                            isPartial = cached.isPartial
+                        )
+                    }
+                }
             }
         } else {
             _smartSuggestions.value = emptyList()
