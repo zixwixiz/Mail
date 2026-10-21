@@ -95,7 +95,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Automatically translate likely German messages when opened. Original text remains available.",
+                            text = "Automatically translate likely German messages when opened. Enabling also queues existing cached mail across synced folders. Original text remains available.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
