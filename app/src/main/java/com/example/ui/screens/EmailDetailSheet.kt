@@ -717,6 +717,12 @@ fun EmailDetailSheet(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+                Text(
+                    text = "Engine: Google ML Kit Translate (on-device). Mail notes use local extraction, not a generative AI model.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
                 if (currentTranslation.isPartial) {
                     Text(
                         text = "Translation may be incomplete. Compare with the original before acting on important details.",
