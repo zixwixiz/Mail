@@ -98,7 +98,7 @@ fun MailScreen(
     onExportSelected: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
+    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }\n    var notesLookbackDays by remember { mutableStateOf(3) }\n    val periodNotes = remember(allMailboxMessages, notesLookbackDays) { MailBriefingBuilder.notesForPeriod(allMailboxMessages, notesLookbackDays) }
     val translationsById = remember(translations) { translations.associateBy { it.messageId } }
     var categoryFilter by remember(selectedFolder) { mutableStateOf<MailCategory?>(null) }
     var dateFilterDays by remember(selectedFolder) { mutableStateOf<Int?>(null) }
@@ -303,6 +303,47 @@ fun MailScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Mail notes · last $notesLookbackDays days", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("Local, source-grounded digest. Prioritizes likely actions; it does not invent details.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(listOf(1, 3, 5, 10, 30)) { days ->
+                            FilterChip(selected = notesLookbackDays == days, onClick = { notesLookbackDays = days }, label = { Text("Last $days day" + if (days == 1) "" else "s") })
+                        }
+                    }
+                    if (periodNotes.isEmpty()) {
+                        Text("No received messages found in this period.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("${periodNotes.size} received message(s) · most actionable first", style = MaterialTheme.typography.labelMedium)
+                        periodNotes.take(8).forEach { noteMessage ->
+                            val priority = ReadingQueueClassifier.classify(noteMessage).priority
+                            val category = MailOrganization.categorize(noteMessage.subject, noteMessage.senderName + " " + noteMessage.senderEmail, noteMessage.bodyText)
+                            Column(modifier = Modifier.fillMaxWidth().clickable { onSelectEmail(noteMessage) }.padding(vertical = 3.dp)) {
+                                Text(
+                                    text = when (priority) {
+                                        ReadingPriority.ACTION_REQUIRED -> "ACTION REQUIRED"
+                                        ReadingPriority.IMPORTANT -> "IMPORTANT"
+                                        ReadingPriority.ROUTINE -> "ROUTINE"
+                                    } + " · " + category.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(noteMessage.subject.ifBlank { "(No subject)" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${noteMessage.senderName.ifBlank { noteMessage.senderEmail }} · " + TimezoneEngine.formatRelativeTime(noteMessage.receivedTimestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val excerpt = MailTextFormatter.readableBody(noteMessage.bodyText.ifBlank { noteMessage.bodyHtml })
+                                if (excerpt.isNotBlank()) Text(excerpt.take(360) + if (excerpt.length > 360) "…" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
