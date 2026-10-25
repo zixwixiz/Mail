@@ -45,10 +45,18 @@ object MailPeriodNotesBuilder {
         val safeDays = days.coerceAtLeast(1)
         val start = now - safeDays.toLong() * 24L * 60L * 60L * 1000L
         val received = messages
-            .filter { it.folder.uppercase() !in excludedFolders }
+            .filter { it.folder.uppercase(java.util.Locale.ROOT) !in excludedFolders }
             .filter { it.receivedTimestamp in start..now }
             .distinctBy { it.id }
-            .sortedByDescending { it.receivedTimestamp }
+            .sortedWith(
+                compareBy<MailMessageEntity> {
+                    when (ReadingQueueClassifier.classify(it).priority) {
+                        ReadingPriority.ACTION_REQUIRED -> 0
+                        ReadingPriority.IMPORTANT -> 1
+                        ReadingPriority.ROUTINE -> 2
+                    }
+                }.thenByDescending { it.receivedTimestamp }
+            )
 
         val categories = received
             .groupingBy {
