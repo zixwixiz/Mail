@@ -2,27 +2,39 @@ package com.example.domain
 
 import androidx.core.text.HtmlCompat
 
-/**
- * Converts MIME/HTML fragments to readable plain text for inbox subjects and previews.
- *
- * Email headers and bodies are untrusted input. This formatter only produces display text;
- * it must never be used as a substitute for sanitizing HTML before rendering a WebView.
- */
+/** Converts email HTML to readable plain text. Not an HTML sanitizer for WebView use. */
 object MailTextFormatter {
     fun plainText(value: String): String =
-        HtmlCompat.fromHtml(value, HtmlCompat.FROM_HTML_MODE_LEGACY)
-            .toString()
-            .replace(Regex("[\\t\\n\\r ]+"), " ")
-            .trim()
+        normalize(HtmlCompat.fromHtml(prepareHtml(value), HtmlCompat.FROM_HTML_MODE_LEGACY).toString(), false)
 
-    /** Readable email-body text that preserves paragraph breaks and list spacing. */
-    fun readableBody(value: String): String =
-        HtmlCompat.fromHtml(value, HtmlCompat.FROM_HTML_MODE_LEGACY)
-            .toString()
-            .replace("\r\n", "\n")
-            .replace(Regex("[\\t ]+\\n"), "\n")
-            .replace(Regex("\\n[\\t ]+"), "\n")
+    /** Preserve paragraph, heading, line-break and list boundaries from common email HTML. */
+    fun readableBody(value: String): String {
+        val prepared = prepareHtml(value)
+            .replace(Regex("(?i)<li\\b[^>]*>"), "• ")
+            .replace(Regex("(?i)</li\\s*>"), "\\n")
+            .replace(Regex("(?i)<(br|hr)\\b[^>]*>"), "\\n")
+            .replace(Regex("(?i)</(p|div|section|article|blockquote|h[1-6]|tr|table|ul|ol)\\s*>"), "\\n")
+            .replace(Regex("(?i)<(p|div|section|article|blockquote|h[1-6]|tr|table|ul|ol)\\b[^>]*>"), "\\n")
+        return normalize(HtmlCompat.fromHtml(prepared, HtmlCompat.FROM_HTML_MODE_LEGACY).toString(), true)
+    }
+
+    private fun prepareHtml(value: String): String = value
+        .replace(Regex("(?i)<style\\b[^>]*>.*?</style\\s*>"), " ")
+        .replace(Regex("(?i)<script\\b[^>]*>.*?</script\\s*>"), " ")
+        .replace(Regex("(?i)<head\\b[^>]*>.*?</head\\s*>"), " ")
+        .replace(Regex("(?i)<img\\b[^>]*alt=[\"']([^\"']*)[\"'][^>]*>"), " [$1] ")
+
+    private fun normalize(value: String, preserveParagraphs: Boolean): String {
+        var text = value.replace("\\r\\n", "\\n").replace('\\r', '\\n')
+            .replace('\u00a0', ' ')
+            .replace(Regex("[\\t ]+\\n"), "\\n")
+            .replace(Regex("\\n[\\t ]+"), "\\n")
             .replace(Regex("[\\t ]{2,}"), " ")
-            .replace(Regex("\\n{3,}"), "\n\n")
-            .trim()
+        text = if (preserveParagraphs) {
+            text.replace(Regex(" *\\n *"), "\\n").replace(Regex("\\n{3,}"), "\\n\\n")
+        } else {
+            text.replace(Regex("\\s+"), " ")
+        }
+        return text.trim()
+    }
 }
