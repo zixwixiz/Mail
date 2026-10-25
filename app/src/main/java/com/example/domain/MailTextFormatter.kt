@@ -25,7 +25,7 @@ object MailTextFormatter {
         .replace(Regex("(?i)<style\\b[^>]*>.*?</style\\s*>"), " ")
         .replace(Regex("(?i)<script\\b[^>]*>.*?</script\\s*>"), " ")
         .replace(Regex("(?i)<head\\b[^>]*>.*?</head\\s*>"), " ")
-        .replace(Regex("(?i)<img\\b[^>]*alt=[\"']([^\"']*)[\"'][^>]*>"), " [$1] ")
+        .replace(Regex("""(?i)<img\b[^>]*alt=["']([^"']*)["'][^>]*>"""), " [$1] ")
 
     private fun normalize(value: String, preserveParagraphs: Boolean): String {
         var text = value.replace("\r\n", "\n").replace('\r', '\n')
