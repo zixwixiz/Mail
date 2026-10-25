@@ -497,7 +497,7 @@ fun MailScreen(
                             senderName = message.senderName,
                             senderEmail = message.senderEmail,
                             receivedTimestamp = message.receivedTimestamp,
-                            body = MailTextFormatter.plainText(message.bodyText.ifBlank { message.bodyHtml }),
+                            body = MailTextFormatter.readableBody(message.bodyText.ifBlank { message.bodyHtml }),
                             attachments = if (includeAttachmentReferences) attachmentNames else emptyList(),
                             mediaFileNames = if (includeAttachmentReferences) attachmentNames else emptyList()
                         )
