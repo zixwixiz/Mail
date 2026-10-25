@@ -23,20 +23,20 @@ object MailTextFormatter {
      */
     fun readableBody(value: String): String {
         val normalizedHtml = value
-            .replace(Regex("(?i)<\\\\s*br\\\\s*/?\\\\s*>"), "\\n")
-            .replace(Regex("(?i)<\\\\s*li\\\\b[^>]*>"), "\\n• ")
-            .replace(Regex("(?i)</\\\\s*li\\\\s*>"), "\\n")
-            .replace(Regex("(?i)</\\\\s*(p|div|section|article|h[1-6]|tr|blockquote)\\\\s*>"), "\\n\\n")
+            .replace(Regex("(?i)<\\\\s*br\\\\s*/?\\\\s*>"), "\n")
+            .replace(Regex("(?i)<\\\\s*li\\\\b[^>]*>"), "\n• ")
+            .replace(Regex("(?i)</\\\\s*li\\\\s*>"), "\n")
+            .replace(Regex("(?i)</\\\\s*(p|div|section|article|h[1-6]|tr|blockquote)\\\\s*>"), "\n\n")
 
         return HtmlCompat.fromHtml(normalizedHtml, HtmlCompat.FROM_HTML_MODE_LEGACY)
             .toString()
-            .replace("\\r\\n", "\\n")
+            .replace("\r\n", "\n")
             .replace(' ', ' ')
             .replace(Regex("(?m)^[\\\\t ]*[-*][\\\\t ]+"), "• ")
-            .replace(Regex("[\\\\t ]+\\\\n"), "\\n")
-            .replace(Regex("\\\\n[\\\\t ]+"), "\\n")
+            .replace(Regex("[\\\\t ]+\\\\n"), "\n")
+            .replace(Regex("\\\\n[\\\\t ]+"), "\n")
             .replace(Regex("[\\\\t ]{2,}"), " ")
-            .replace(Regex("\\\\n{3,}"), "\\n\\n")
+            .replace(Regex("\\\\n{3,}"), "\n\n")
             .trim()
     }
 }
