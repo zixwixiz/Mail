@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -62,6 +64,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.MailBriefingBuilder
+import com.example.domain.MailCategory
+import com.example.domain.MailOrganization
+import com.example.domain.MailExportItem
+import com.example.domain.MailExportFormatter
 import com.example.domain.MailTextFormatter
 import com.example.domain.MailTranslationFingerprint
 import com.example.domain.ReadingPriority
@@ -88,10 +94,18 @@ fun MailScreen(
     onComposeClick: () -> Unit,
     isSyncing: Boolean = false,
     onSyncClick: () -> Unit = {},
+    previousAppOpenedTimestamp: Long = 0L,
+    onExportSelected: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
     val translationsById = remember(translations) { translations.associateBy { it.messageId } }
+    var categoryFilter by remember(selectedFolder) { mutableStateOf<MailCategory?>(null) }
+    var dateFilterDays by remember(selectedFolder) { mutableStateOf<Int?>(null) }
+    var senderFilter by remember(selectedFolder) { mutableStateOf("") }
+    var selectedIds by remember(selectedFolder) { mutableStateOf<Set<String>>(emptySet()) }
+    var selectionMode by remember(selectedFolder) { mutableStateOf(false) }
+    var includeAttachmentReferences by remember(selectedFolder) { mutableStateOf(true) }
     val visibleMessages = remember(messages, selectedFolder) {
         if (selectedFolder == "SNOOZED") {
             messages.filter { it.snoozedUntil != null && it.snoozedUntil > System.currentTimeMillis() }
@@ -130,6 +144,15 @@ fun MailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (previousAppOpenedTimestamp > 0L) {
+                Text(
+                    text = "Previous app session: " + TimezoneEngine.formatRelativeTime(previousAppOpenedTimestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp)
+                )
+            }
+
             // Folder Filter Chips Row
             LazyRow(
                 modifier = Modifier
@@ -328,12 +351,38 @@ fun MailScreen(
                 var queueFilter by remember(selectedFolder) { mutableStateOf(ReadingQueueFilter.ALL) }
                 val filteredMessages = visibleMessages.filter { message ->
                     val priority = ReadingQueueClassifier.classify(message).priority
-                    when (queueFilter) {
+                    val category = MailOrganization.categorize(message.subject, message.senderName + " " + message.senderEmail, message.bodyText)
+                    val matchesQueue = when (queueFilter) {
                         ReadingQueueFilter.ALL -> true
                         ReadingQueueFilter.ACTION -> priority == ReadingPriority.ACTION_REQUIRED
                         ReadingQueueFilter.IMPORTANT -> priority == ReadingPriority.IMPORTANT
                         ReadingQueueFilter.ROUTINE -> priority == ReadingPriority.ROUTINE
                     }
+                    val matchesCategory = categoryFilter == null || category == categoryFilter
+                    val matchesDate = dateFilterDays == null || MailOrganization.receivedWithinDays(message.receivedTimestamp, dateFilterDays!!)
+                    val matchesSender = senderFilter.isBlank() || message.senderName.contains(senderFilter, ignoreCase = true) || message.senderEmail.contains(senderFilter, ignoreCase = true)
+                    matchesQueue && matchesCategory && matchesDate && matchesSender
+                }
+
+                fun exportSelected(format: String) {
+                    val selected = filteredMessages.filter { it.id in selectedIds }
+                    if (selected.isEmpty()) return
+                    val exportItems = selected.map { message ->
+                        val attachmentNames = message.attachments.lineSequence().filter { it.isNotBlank() }.toList()
+                        MailExportItem(
+                            id = message.id,
+                            subject = MailTextFormatter.plainText(message.subject),
+                            senderName = message.senderName,
+                            senderEmail = message.senderEmail,
+                            receivedTimestamp = message.receivedTimestamp,
+                            body = MailTextFormatter.plainText(message.bodyText.ifBlank { message.bodyHtml }),
+                            attachments = if (includeAttachmentReferences) attachmentNames else emptyList(),
+                            mediaFileNames = if (includeAttachmentReferences) attachmentNames else emptyList()
+                        )
+                    }
+                    val extension = when (format) { "csv" -> "csv"; "text" -> "txt"; else -> "md" }
+                    val mimeType = when (format) { "csv" -> "text/csv"; "text" -> "text/plain"; else -> "text/markdown" }
+                    onExportSelected(MailExportFormatter.format(exportItems, format, includeAttachmentReferences), "jlu-mail-export." + extension, mimeType)
                 }
 
                 LazyColumn(
@@ -341,6 +390,57 @@ fun MailScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item(key = "mail_management_filters") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Filter and export mail", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                OutlinedTextField(value = senderFilter, onValueChange = { senderFilter = it }, label = { Text("Filter by sender name or email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Text("Category", style = MaterialTheme.typography.labelMedium)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    item { FilterChip(selected = categoryFilter == null, onClick = { categoryFilter = null }, label = { Text("All") }) }
+                                    items(MailCategory.values().toList()) { category ->
+                                        FilterChip(selected = categoryFilter == category, onClick = { categoryFilter = if (categoryFilter == category) null else category }, label = { Text(category.label) })
+                                    }
+                                }
+                                Text("Received", style = MaterialTheme.typography.labelMedium)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val dateChoices = listOf<Int?>(null, 0, 2, 3, 5, 10)
+                                    items(dateChoices) { days ->
+                                        val label = when (days) { null -> "Any date"; 0 -> "Today"; else -> days.toString() + " days" }
+                                        FilterChip(selected = dateFilterDays == days, onClick = { dateFilterDays = days }, label = { Text(label) })
+                                    }
+                                }
+                                if (!selectionMode) {
+                                    TextButton(onClick = { selectionMode = true }) { Text("Select emails to export") }
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = filteredMessages.isNotEmpty() && filteredMessages.all { it.id in selectedIds },
+                                            onCheckedChange = { checked -> selectedIds = if (checked) selectedIds + filteredMessages.map { it.id } else selectedIds - filteredMessages.map { it.id }.toSet() }
+                                        )
+                                        Text("Select all filtered (" + filteredMessages.count { it.id in selectedIds } + ")", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = includeAttachmentReferences, onCheckedChange = { includeAttachmentReferences = it })
+                                        Text("Include attachment filenames (media files themselves are not cached)", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (selectedIds.isNotEmpty()) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            TextButton(onClick = { exportSelected("markdown") }) { Text("Export .md") }
+                                            TextButton(onClick = { exportSelected("csv") }) { Text("Export CSV") }
+                                            TextButton(onClick = { exportSelected("text") }) { Text("Export .txt") }
+                                        }
+                                    }
+                                    TextButton(onClick = { selectedIds = emptySet(); selectionMode = false }) { Text("Cancel selection") }
+                                }
+                            }
+                        }
+                    }
+
                     item(key = "reading_queue") {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -411,7 +511,10 @@ fun MailScreen(
                                 email = email,
                                 translation = cachedTranslation,
                                 onClick = { onSelectEmail(email) },
-                                onToggleFlag = { onToggleFlag(email.id, email.isFlagged) }
+                                onToggleFlag = { onToggleFlag(email.id, email.isFlagged) },
+                                selectionMode = selectionMode,
+                                isSelected = email.id in selectedIds,
+                                onToggleSelected = { selectionMode = true; selectedIds = if (email.id in selectedIds) selectedIds - email.id else selectedIds + email.id }
                             )
                         }
                     }
@@ -435,10 +538,13 @@ fun EmailItemCard(
     translation: MailTranslationEntity? = null,
     onClick: () -> Unit,
     onToggleFlag: () -> Unit,
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelected: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     ElevatedCard(
-        onClick = onClick,
+        onClick = { if (selectionMode) onToggleSelected() else onClick() },
         modifier = modifier
             .fillMaxWidth()
             .testTag("email_item_${email.id}"),
@@ -458,6 +564,7 @@ fun EmailItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
+                    if (selectionMode) Checkbox(checked = isSelected, onCheckedChange = { onToggleSelected() })
                     if (!email.isRead) {
                         Box(
                             modifier = Modifier
@@ -520,6 +627,23 @@ fun EmailItemCard(
                     text = "Translation may be incomplete",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
+            if (email.lastOpenedTimestamp > 0L) {
+                Text(
+                    text = "Last opened: " + TimezoneEngine.formatRelativeTime(email.lastOpenedTimestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(
+                    text = MailOrganization.categorize(email.subject, email.senderName + " " + email.senderEmail, email.bodyText).label,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 

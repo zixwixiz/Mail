@@ -88,6 +88,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = JluRepository(database, credentialStore = MailboxCredentialStore(application.applicationContext))
 
     private val preferences = application.getSharedPreferences("mail_preferences", Application.MODE_PRIVATE)
+    /** Timestamp from the prior app session; zero when this is the first recorded launch. */
+    val previousAppOpenedTimestamp: Long = preferences.getLong("last_app_opened_timestamp", 0L).also {
+        preferences.edit().putLong("last_app_opened_timestamp", System.currentTimeMillis()).apply()
+    }
 
     private val _autoTranslateOnOpen = MutableStateFlow(
         preferences.getBoolean("auto_translate_on_open", false)
@@ -422,6 +426,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Mark as read
             viewModelScope.launch {
                 repository.setReadState(email.id, true)
+                database.mailDao().setLastOpenedTimestamp(email.id, System.currentTimeMillis())
             }
             // Extract smart suggestions
             _smartSuggestions.value = SmartExtractor.extractSuggestions(email.subject, email.bodyText, email.id, email.receivedTimestamp)
