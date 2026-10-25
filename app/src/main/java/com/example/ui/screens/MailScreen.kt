@@ -66,7 +66,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.domain.MailBriefingBuilder
 import com.example.domain.MailCategory
 import com.example.domain.MailOrganization
 import com.example.domain.MailPeriodNotesBuilder
@@ -102,10 +101,8 @@ fun MailScreen(
     onExportSelected: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
     var notesLookbackDays by remember(activeMailbox.id) { mutableStateOf(3) }
     var showPeriodNotes by remember(activeMailbox.id) { mutableStateOf(false) }
-    var showTodayActions by remember(activeMailbox.id) { mutableStateOf(false) }
     val periodNotes = remember(allMailboxMessages, notesLookbackDays) {
         MailPeriodNotesBuilder.build(allMailboxMessages, notesLookbackDays)
     }
@@ -270,58 +267,6 @@ fun MailScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
-                        }
-                    }
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Inbox overview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Today: ${briefing.todayCount} · ${briefing.todayUnreadCount} unread · ${briefing.todayActionCount} possible actions",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                "This week: ${briefing.weekCount} · ${briefing.weekUnreadCount} unread · ${briefing.weekActionCount} possible actions",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        TextButton(
-                            onClick = { showTodayActions = !showTodayActions },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(if (showTodayActions) "Hide" else "Today's actions")
-                        }
-                    }
-                    if (showTodayActions) {
-                        if (briefing.topActionMessages.isEmpty()) {
-                            Text("No likely action mail detected today.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            briefing.topActionMessages.forEach { actionMessage ->
-                                TextButton(
-                                    onClick = { onSelectEmail(actionMessage) },
-                                    contentPadding = PaddingValues(0.dp)
-                                ) {
-                                    Text(
-                                        text = "${actionMessage.subject.ifBlank { "(no subject)" }} · ${actionMessage.senderName}",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
                         }
                     }
                 }
