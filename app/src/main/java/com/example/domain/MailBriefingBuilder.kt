@@ -58,4 +58,26 @@ object MailBriefingBuilder {
             topActionMessages = todayActions.take(3)
         )
     }
+
+    /** Return recent received messages with likely actions first; notes remain linked to source mail. */
+    fun notesForPeriod(
+        messages: List<MailMessageEntity>,
+        days: Int,
+        now: Long = System.currentTimeMillis()
+    ): List<MailMessageEntity> {
+        val start = now - days.coerceAtLeast(1) * 24L * 60L * 60L * 1000L
+        return messages.asSequence()
+            .filter { it.folder !in setOf("SENT", "DRAFTS", "TRASH") }
+            .filter { it.receivedTimestamp in start..now }
+            .sortedWith(
+                compareBy<MailMessageEntity> {
+                    when (ReadingQueueClassifier.classify(it).priority) {
+                        ReadingPriority.ACTION_REQUIRED -> 0
+                        ReadingPriority.IMPORTANT -> 1
+                        ReadingPriority.ROUTINE -> 2
+                    }
+                }.thenByDescending { it.receivedTimestamp }
+            )
+            .toList()
+    }
 }
