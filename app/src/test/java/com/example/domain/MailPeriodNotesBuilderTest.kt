@@ -74,6 +74,8 @@ class MailPeriodNotesBuilderTest {
 
         val item = notes.items.single()
         assertTrue("Expected more context than the old 420-character quick read", item.summary.length > 420)
+        assertTrue("Detailed notes should separate context from key details", item.summary.contains("Key details from the message:"))
+        assertTrue("Detailed notes should preserve a readable line break", item.summary.contains("\n"))
         assertTrue(item.keyPoints.any { it.contains("Dates mentioned") })
         assertTrue(item.keyPoints.any { it.contains("Times mentioned") })
         assertEquals(1, notes.possibleActionCount)
