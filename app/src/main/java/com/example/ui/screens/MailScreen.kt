@@ -352,7 +352,7 @@ fun MailScreen(
                             )
                         }
                         TextButton(onClick = { showPeriodNotes = !showPeriodNotes }) {
-                            Text(if (showPeriodNotes) "Hide notes" else "Generate notes")
+                            Text(if (showPeriodNotes) "Hide notes" else "View notes")
                         }
                     }
 
