@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# Keep only the latest CI run for a pull request. Main-branch release builds are never cancelled.
+concurrency:
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: write
 
