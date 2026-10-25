@@ -1,7 +1,6 @@
 package com.example.domain
 
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.entities.MailMessageEntity
 import org.junit.Assert.assertTrue
 import org.junit.Test
