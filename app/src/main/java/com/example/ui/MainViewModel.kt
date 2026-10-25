@@ -291,6 +291,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { database.translationDao().getTranslationsForMailbox(it.id, "en") }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _translatedNotes = MutableStateFlow<Map<String, String>>(emptyMap())
+    val translatedNotes: StateFlow<Map<String, String>> = _translatedNotes.asStateFlow()
+
+    fun translateNoteToEnglish(note: NoteEntity) {
+        if (_translatedNotes.value.containsKey(note.id)) return
+        viewModelScope.launch {
+            val english = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
+            val result = TranslationService.translateGermanAcademicTextOnline(note.content, english)
+            _translatedNotes.value = _translatedNotes.value + (note.id to result.translatedText)
+            if (result.isPartial) showFeedback("Note translation may be incomplete; compare with the original.", isError = false)
+        }
+    }
+
     private val _translationProgress = MutableStateFlow(MailboxTranslationProgress())
     val translationProgress: StateFlow<MailboxTranslationProgress> = _translationProgress.asStateFlow()
 

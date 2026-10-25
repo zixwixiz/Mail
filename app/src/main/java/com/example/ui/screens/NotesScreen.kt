@@ -58,6 +58,8 @@ fun NotesScreen(
     notes: List<NoteEntity>,
     onDeleteNote: (String) -> Unit,
     onAddNoteClick: () -> Unit,
+    translatedNotes: Map<String, String> = emptyMap(),
+    onTranslateNote: (NoteEntity) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -140,10 +142,21 @@ fun NotesScreen(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             Text(
-                                text = note.content,
+                                text = com.example.domain.MailTextFormatter.readableBody(note.content),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            val englishNote = translatedNotes[note.id]
+                            if (englishNote.isNullOrBlank()) {
+                                TextButton(onClick = { onTranslateNote(note) }) { Text("Translate note to English") }
+                            } else {
+                                Text("English translation", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = com.example.domain.MailTextFormatter.readableBody(englishNote),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(8.dp))
 

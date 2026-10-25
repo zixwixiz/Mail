@@ -150,6 +150,7 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val contacts by viewModel.currentContacts.collectAsStateWithLifecycle()
     val contactCandidates by viewModel.contactCandidates.collectAsStateWithLifecycle()
     val notes by viewModel.currentNotes.collectAsStateWithLifecycle()
+    val translatedNotes by viewModel.translatedNotes.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
     val verificationSummary by viewModel.verificationSummary.collectAsStateWithLifecycle()
     val savedVerification by viewModel.savedVerification.collectAsStateWithLifecycle()
@@ -431,7 +432,9 @@ fun JluMobileApp(viewModel: MainViewModel) {
                     NotesScreen(
                         notes = notes,
                         onDeleteNote = { viewModel.deleteNote(it) },
-                        onAddNoteClick = { viewModel.setCreateNoteOpen(true) }
+                        onAddNoteClick = { viewModel.setCreateNoteOpen(true) },
+                        translatedNotes = translatedNotes,
+                        onTranslateNote = { viewModel.translateNoteToEnglish(it) }
                     )
                 }
                 NavigationTab.DIAGNOSTICS -> {
