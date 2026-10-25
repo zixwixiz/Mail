@@ -53,8 +53,18 @@ object MailQuickSummaryBuilder {
         val summary = when {
             searchable.isBlank() -> "No readable message body is available."
             sentences.isEmpty() -> searchable.take(MAX_SUMMARY_CHARS)
-            else -> selectedSentences.joinToString(" ").take(MAX_SUMMARY_CHARS)
-                .ifBlank { searchable.take(MAX_SUMMARY_CHARS) }
+            else -> {
+                val opening = selectedSentences.take(3).joinToString(" ")
+                val details = selectedSentences.drop(3)
+                buildString {
+                    append(opening)
+                    if (details.isNotEmpty()) {
+                        append("\n\nKey details from the message:\n")
+                        details.forEach { append("• ").append(it).append('\n') }
+                    }
+                }.trim().take(MAX_SUMMARY_CHARS)
+                    .ifBlank { searchable.take(MAX_SUMMARY_CHARS) }
+            }
         }
 
         val classification = ReadingQueueClassifier.classify(message)
