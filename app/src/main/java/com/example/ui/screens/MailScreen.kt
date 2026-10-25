@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -63,9 +66,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.domain.MailBriefingBuilder
 import com.example.domain.MailCategory
 import com.example.domain.MailOrganization
+import com.example.domain.MailPeriodNotesBuilder
 import com.example.domain.MailExportItem
 import com.example.domain.MailExportFormatter
 import com.example.domain.MailTextFormatter
@@ -98,7 +101,11 @@ fun MailScreen(
     onExportSelected: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
+    var notesLookbackDays by remember(activeMailbox.id) { mutableStateOf(3) }
+    var showPeriodNotes by remember(activeMailbox.id) { mutableStateOf(false) }
+    val periodNotes = remember(allMailboxMessages, notesLookbackDays) {
+        MailPeriodNotesBuilder.build(allMailboxMessages, notesLookbackDays)
+    }
     val translationsById = remember(translations) { translations.associateBy { it.messageId } }
     var categoryFilter by remember(selectedFolder) { mutableStateOf<MailCategory?>(null) }
     var dateFilterDays by remember(selectedFolder) { mutableStateOf<Int?>(null) }
@@ -268,40 +275,100 @@ fun MailScreen(
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Text(
-                        text = "Daily & weekly briefing",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Today: ${briefing.todayCount} messages · ${briefing.todayUnreadCount} unread · ${briefing.todayActionCount} possible actions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "This week: ${briefing.weekCount} messages · ${briefing.weekUnreadCount} unread · ${briefing.weekActionCount} possible actions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (briefing.topActionMessages.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .then(if (showPeriodNotes) Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()) else Modifier),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Mail notes", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Last ${notesLookbackDays} days · ${periodNotes.messageCount} messages · ${periodNotes.possibleActionCount} possible actions",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(onClick = { showPeriodNotes = !showPeriodNotes }) {
+                            Text(if (showPeriodNotes) "Hide notes" else "View notes")
+                        }
+                    }
+
+                    if (showPeriodNotes) {
                         Text(
-                            text = "Possible actions today",
+                            "On-device extracted notes from cached messages, not generative AI. Dates and actions are clues; verify them in the original email.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(listOf(1, 2, 3, 5, 10, 30)) { days ->
+                                FilterChip(
+                                    selected = notesLookbackDays == days,
+                                    onClick = { notesLookbackDays = days },
+                                    label = { Text("Last $days day" + if (days == 1) "" else "s") }
+                                )
+                            }
+                        }
+                        Text(
+                            "${periodNotes.unreadCount} unread · ${periodNotes.possibleActionCount} possible actions",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        briefing.topActionMessages.forEach { actionMessage ->
-                            TextButton(
-                                onClick = { onSelectEmail(actionMessage) },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
+                        if (periodNotes.categoryCounts.isNotEmpty()) {
+                            Text(
+                                "Categories: " + periodNotes.categoryCounts.take(4).joinToString(" · ") { "${it.label} (${it.count})" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (periodNotes.items.isEmpty()) {
+                            Text("No received messages found in this period.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            periodNotes.items.forEach { note ->
+                                val priorityLabel = when (note.priority) {
+                                    ReadingPriority.ACTION_REQUIRED -> "POSSIBLE ACTION"
+                                    ReadingPriority.IMPORTANT -> "IMPORTANT"
+                                    ReadingPriority.ROUTINE -> "ROUTINE"
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            allMailboxMessages.firstOrNull { it.id == note.sourceId }?.let(onSelectEmail)
+                                        }
+                                        .padding(vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        priorityLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(note.subject, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${note.sender} · " + TimezoneEngine.formatRelativeTime(note.receivedTimestamp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(note.summary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                                    note.keyPoints.forEach { point ->
+                                        Text("• $point", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, top = 2.dp))
+                                    }
+                                }
+                            }
+                            if (periodNotes.omittedItemCount > 0) {
                                 Text(
-                                    text = "${actionMessage.subject.ifBlank { "(no subject)" }} · ${actionMessage.senderName}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    "${periodNotes.items.size} detailed notes shown; ${periodNotes.omittedItemCount} additional messages are included in the counts.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -375,7 +442,7 @@ fun MailScreen(
                             senderName = message.senderName,
                             senderEmail = message.senderEmail,
                             receivedTimestamp = message.receivedTimestamp,
-                            body = MailTextFormatter.plainText(message.bodyText.ifBlank { message.bodyHtml }),
+                            body = MailTextFormatter.readableBody(message.bodyText.ifBlank { message.bodyHtml }),
                             attachments = if (includeAttachmentReferences) attachmentNames else emptyList(),
                             mediaFileNames = if (includeAttachmentReferences) attachmentNames else emptyList()
                         )

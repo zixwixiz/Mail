@@ -94,7 +94,7 @@ object TranslationService {
                 if (text.isBlank()) {
                     TranslationResult(text, text, targetLang = targetLanguage)
                 } else {
-                    runCatching { translator.translate(text).await() }
+                    runCatching { translatePreservingLayout(text, translator) }
                         .fold(
                             onSuccess = { translated ->
                                 TranslationResult(
@@ -113,6 +113,30 @@ object TranslationService {
         } finally {
             translator.close()
         }
+    }
+
+    /**
+     * Translate each visual line independently so the model cannot flatten paragraph and list
+     * boundaries. The original newline sequence is copied back unchanged between translated lines.
+     */
+    private suspend fun translatePreservingLayout(
+        text: String,
+        translator: com.google.mlkit.nl.translate.Translator
+    ): String {
+        if ('\n' !in text) return translator.translate(text).await()
+
+        val lineBreaks = Regex("\\n+")
+        val output = StringBuilder(text.length)
+        var cursor = 0
+        lineBreaks.findAll(text).forEach { match ->
+            val line = text.substring(cursor, match.range.first)
+            output.append(if (line.isBlank()) line else translator.translate(line).await())
+            output.append(match.value)
+            cursor = match.range.last + 1
+        }
+        val tail = text.substring(cursor)
+        output.append(if (tail.isBlank()) tail else translator.translate(tail).await())
+        return output.toString()
     }
 
     fun translateGermanAcademicText(text: String, targetLanguage: TargetLanguage): TranslationResult {

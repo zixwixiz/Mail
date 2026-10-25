@@ -450,7 +450,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val shouldAutoTranslate = _autoTranslateOnOpen.value &&
                 TranslationService.isLikelyGerman(
-                    "${email.subject}\n${email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }}"
+                    "${email.subject}\n${email.bodyText.ifBlank { MailTextFormatter.readableBody(email.bodyHtml) }}"
                 )
             if (hasCurrentEnglishCache || shouldAutoTranslate) {
                 translateCurrentEmail(TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" })
@@ -462,7 +462,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         cached.originalFingerprint == MailTranslationFingerprint.forMessage(email) &&
                         _selectedEmail.value?.id == email.id
                     ) {
-                        val originalBody = email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }
+                        val originalBody = email.bodyText.ifBlank { MailTextFormatter.readableBody(email.bodyHtml) }
                         _targetLanguage.value = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
                         _currentTranslation.value = TranslationResult(
                             originalText = originalBody,
@@ -519,7 +519,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val email = _selectedEmail.value ?: return
         val mailboxId = _activeMailbox.value.id
         viewModelScope.launch {
-            val originalBody = email.bodyText.ifBlank { MailTextFormatter.plainText(email.bodyHtml) }
+            val originalBody = email.bodyText.ifBlank { MailTextFormatter.readableBody(email.bodyHtml) }
             val fingerprint = MailTranslationFingerprint.forMessage(email)
             val cached = database.translationDao().getTranslation(mailboxId, email.id, target.code)
             if (cached != null && cached.originalFingerprint == fingerprint) {
@@ -596,7 +596,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val existing = cachedTranslations.value.associateBy { it.messageId }
         val target = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
         val germanMessages = allMessages.filter { message ->
-            val body = message.bodyText.ifBlank { MailTextFormatter.plainText(message.bodyHtml) }
+            val body = message.bodyText.ifBlank { MailTextFormatter.readableBody(message.bodyHtml) }
             TranslationService.isLikelyGerman("${message.subject}\n$body")
         }
         val pending = germanMessages.filter { message ->
@@ -621,7 +621,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 for (batch in pending.chunked(4)) {
                     if (_activeMailbox.value.id != mailbox.id) break
                     val originals = batch.map { message ->
-                        message.bodyText.ifBlank { MailTextFormatter.plainText(message.bodyHtml) }
+                        message.bodyText.ifBlank { MailTextFormatter.readableBody(message.bodyHtml) }
                     }
                     val fields = batch.flatMapIndexed { index, message ->
                         listOf(message.subject, originals[index])

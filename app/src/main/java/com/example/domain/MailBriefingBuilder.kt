@@ -58,4 +58,6 @@ object MailBriefingBuilder {
             topActionMessages = todayActions.take(3)
         )
     }
+
+
 }

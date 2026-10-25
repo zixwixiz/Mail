@@ -447,8 +447,8 @@ class MailAppRobolectricTest {
         )
         val summary = MailQuickSummaryBuilder.build(message)
         assertTrue(summary.summary.startsWith("Please submit the form"))
-        assertTrue(summary.keyPoints.any { it.startsWith("Dates mentioned:") })
-        assertTrue(summary.keyPoints.any { it.startsWith("Times mentioned:") })
+        assertTrue(summary.keyPoints.any { it.startsWith("Dates mentioned (verify in source):") })
+        assertTrue(summary.keyPoints.any { it.startsWith("Times mentioned (verify time zone):") })
         assertTrue(summary.keyPoints.any { it.startsWith("Amounts mentioned:") })
         assertTrue(summary.keyPoints.any { it.contains("application.pdf") })
     }
