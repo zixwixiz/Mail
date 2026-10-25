@@ -339,27 +339,29 @@ fun EmailDetailSheet(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "Quick read",
+                        text = "Detailed mail notes",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = quickSummary.summary,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 4.dp)
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                     quickSummary.keyPoints.forEach { point ->
                         Text(
                             text = "• $point",
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
+                            lineHeight = 19.sp,
+                            modifier = Modifier.padding(top = 5.dp)
                         )
                     }
                     Text(
-                        text = "Extractive overview from message text; verify important details in the original.",
+                        text = "On-device, source-grounded extraction—not a generative AI summary. Verify dates, deadlines, amounts, and decisions in the original.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -742,7 +744,7 @@ fun EmailDetailSheet(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = MailTextFormatter.plainText(email.bodyText.ifBlank { email.bodyHtml }),
+                    text = MailTextFormatter.readableBody(email.bodyText.ifBlank { email.bodyHtml }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
