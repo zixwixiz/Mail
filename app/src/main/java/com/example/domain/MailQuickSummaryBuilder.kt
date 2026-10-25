@@ -75,9 +75,12 @@ object MailQuickSummaryBuilder {
                 add("Follow-up signal: ${classification.reason}")
             }
 
-            val dates = datePattern.findAll(readableBody).map { it.value }.distinct().take(5).toList()
-            val times = timePattern.findAll(readableBody).map { it.value }.distinct().take(5).toList()
-            val amounts = amountPattern.findAll(readableBody).map { it.value }.distinct().take(5).toList()
+            // Extract verifiable facts from normalized plain text as well as the reader view.
+            // The reader formatter may insert paragraph markers into HTML-derived content.
+            val factText = MailTextFormatter.plainText(message.bodyText.ifBlank { message.bodyHtml })
+            val dates = datePattern.findAll(factText).map { it.value }.distinct().take(5).toList()
+            val times = timePattern.findAll(factText).map { it.value }.distinct().take(5).toList()
+            val amounts = amountPattern.findAll(factText).map { it.value }.distinct().take(5).toList()
             if (dates.isNotEmpty()) add("Dates mentioned (verify in source): ${dates.joinToString(", ")}")
             if (times.isNotEmpty()) add("Times mentioned (verify time zone): ${times.joinToString(", ")}")
             if (amounts.isNotEmpty()) add("Amounts mentioned: ${amounts.joinToString(", ")}")
