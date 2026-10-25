@@ -1,8 +1,6 @@
 package com.example.domain
 
 import com.example.data.local.entities.MailMessageEntity
-import java.util.Locale
-
 data class MailQuickSummary(
     val summary: String,
     val keyPoints: List<String>
