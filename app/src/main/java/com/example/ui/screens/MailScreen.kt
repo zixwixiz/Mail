@@ -11,14 +11,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Attachment
@@ -63,7 +66,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.domain.MailBriefingBuilder
+import com.example.domain.MailDigestBuilder
 import com.example.domain.MailCategory
 import com.example.domain.MailOrganization
 import com.example.domain.MailExportItem
@@ -98,7 +101,11 @@ fun MailScreen(
     onExportSelected: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val briefing = remember(allMailboxMessages) { MailBriefingBuilder.build(allMailboxMessages) }
+    var showDigest by remember(activeMailbox.id) { mutableStateOf(false) }
+    var digestDays by remember(activeMailbox.id) { mutableStateOf(3) }
+    val digest = remember(allMailboxMessages, digestDays) {
+        MailDigestBuilder.build(allMailboxMessages, digestDays)
+    }
     val translationsById = remember(translations) { translations.associateBy { it.messageId } }
     var categoryFilter by remember(selectedFolder) { mutableStateOf<MailCategory?>(null) }
     var dateFilterDays by remember(selectedFolder) { mutableStateOf<Int?>(null) }
@@ -268,41 +275,128 @@ fun MailScreen(
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Text(
-                        text = "Daily & weekly briefing",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Today: ${briefing.todayCount} messages · ${briefing.todayUnreadCount} unread · ${briefing.todayActionCount} possible actions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "This week: ${briefing.weekCount} messages · ${briefing.weekUnreadCount} unread · ${briefing.weekActionCount} possible actions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (briefing.topActionMessages.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Mail notes · past $digestDays ${if (digestDays == 1) "day" else "days"}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${digest.messageCount} messages · ${digest.unreadCount} unread · ${digest.actionCount} possible actions",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(onClick = { showDigest = !showDigest }) {
+                            Text(if (showDigest) "Hide notes" else "View notes")
+                        }
+                    }
+
+                    if (showDigest) {
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Possible actions today",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        briefing.topActionMessages.forEach { actionMessage ->
-                            TextButton(
-                                onClick = { onSelectEmail(actionMessage) },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text(
-                                    text = "${actionMessage.subject.ifBlank { "(no subject)" }} · ${actionMessage.senderName}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(listOf(1, 3, 7, 14, 30)) { days ->
+                                FilterChip(
+                                    selected = digestDays == days,
+                                    onClick = { digestDays = days },
+                                    label = { Text(if (days == 1) "1 day" else "$days days") }
                                 )
+                            }
+                        }
+                        Text(
+                            text = "Source-grounded notes extracted on this device. This build uses rules-based extraction, not a generative AI model; verify important details in the original email.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            if (digest.entries.isEmpty()) {
+                                Text(
+                                    text = "No received mail found in the past $digestDays ${if (digestDays == 1) "day" else "days"}.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                if (digest.messageCount > digest.entries.size) {
+                                    Text(
+                                        text = "Showing ${digest.entries.size} most recent messages of ${digest.messageCount}.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                                digest.entries.forEachIndexed { index, entry ->
+                                    val message = entry.message
+                                    Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = entry.category.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            if (entry.priority == ReadingPriority.ACTION_REQUIRED) {
+                                                Text(
+                                                    text = "Possible action",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = MailTextFormatter.plainText(message.subject).ifBlank { "(No subject)" },
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                        Text(
+                                            text = "${message.senderName.ifBlank { message.senderEmail }} · ${TimezoneEngine.formatRelativeTime(message.receivedTimestamp)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = entry.summary.summary,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                        entry.summary.keyPoints.take(3).forEach { point ->
+                                            Text(
+                                                text = "• $point",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(top = 3.dp)
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { onSelectEmail(message) },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text("Open original email")
+                                        }
+                                    }
+                                    if (index < digest.entries.lastIndex) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                }
                             }
                         }
                     }
