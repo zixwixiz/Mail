@@ -48,7 +48,7 @@ object MailQuickSummaryBuilder {
         val summary = when {
             plainBody.isBlank() -> "No readable message body is available."
             selectedSentences.isEmpty() -> plainBody.take(MAX_SUMMARY_CHARS)
-            else -> selectedSentences.joinToString("\\n\\n").let { selected ->
+            else -> selectedSentences.joinToString("\n\n").let { selected ->
                 if (selected.length <= MAX_SUMMARY_CHARS) selected
                 else selected.take(MAX_SUMMARY_CHARS - 1).trimEnd() + "…"
             }
