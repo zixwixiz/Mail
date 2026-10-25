@@ -40,6 +40,9 @@ interface MailDao {
     @Query("UPDATE mail_messages SET isRead = :isRead WHERE id = :id")
     suspend fun setReadState(id: String, isRead: Boolean)
 
+    @Query("UPDATE mail_messages SET lastOpenedTimestamp = :timestamp WHERE id = :id")
+    suspend fun setLastOpenedTimestamp(id: String, timestamp: Long)
+
     @Query("UPDATE mail_messages SET isFlagged = :isFlagged WHERE id = :id")
     suspend fun setFlagState(id: String, isFlagged: Boolean)
 

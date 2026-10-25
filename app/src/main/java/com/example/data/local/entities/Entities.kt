@@ -21,7 +21,8 @@ data class MailMessageEntity(
     val hasAttachments: Boolean,
     val attachments: String = "", // newline-separated attachment names/sizes
     val category: String = "Normal",
-    val snoozedUntil: Long? = null // Epoch ms; null means not snoozed
+    val snoozedUntil: Long? = null, // Epoch ms; null means not snoozed
+    val lastOpenedTimestamp: Long = 0L // Epoch ms; zero means never opened in this app
 )
 
 @Entity(tableName = "calendar_events")

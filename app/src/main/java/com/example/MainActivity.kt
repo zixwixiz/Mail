@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -113,6 +115,23 @@ class MainActivity : ComponentActivity() {
 fun JluMobileApp(viewModel: MainViewModel) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingExportContent by remember { mutableStateOf("") }
+    val exportDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writer?.write(pendingExportContent)
+                }
+            }.onSuccess {
+                Toast.makeText(context, "Mail export saved", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Could not save export: " + (it.localizedMessage ?: "unknown error"), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val activeMailbox by viewModel.activeMailbox.collectAsStateWithLifecycle()
     val availableMailboxes by viewModel.availableMailboxes.collectAsStateWithLifecycle()
@@ -131,6 +150,7 @@ fun JluMobileApp(viewModel: MainViewModel) {
     val contacts by viewModel.currentContacts.collectAsStateWithLifecycle()
     val contactCandidates by viewModel.contactCandidates.collectAsStateWithLifecycle()
     val notes by viewModel.currentNotes.collectAsStateWithLifecycle()
+    val translatedNotes by viewModel.translatedNotes.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
     val verificationSummary by viewModel.verificationSummary.collectAsStateWithLifecycle()
     val savedVerification by viewModel.savedVerification.collectAsStateWithLifecycle()
@@ -368,7 +388,17 @@ fun JluMobileApp(viewModel: MainViewModel) {
                         onToggleFlag = { id, flag -> viewModel.toggleEmailFlag(id, flag) },
                         onComposeClick = { clearComposeContext(); viewModel.setComposeOpen(true) },
                         isSyncing = isSyncing,
-                        onSyncClick = { viewModel.syncCurrentFolder() }
+                        onSyncClick = { viewModel.syncCurrentFolder() },
+                        previousAppOpenedTimestamp = viewModel.previousAppOpenedTimestamp,
+                        onExportSelected = { content, filename, mimeType ->
+                            pendingExportContent = content
+                            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = mimeType
+                                putExtra(Intent.EXTRA_TITLE, filename)
+                            }
+                            exportDocumentLauncher.launch(intent)
+                        }
                     )
                 }
                 NavigationTab.CALENDAR -> {
@@ -402,7 +432,9 @@ fun JluMobileApp(viewModel: MainViewModel) {
                     NotesScreen(
                         notes = notes,
                         onDeleteNote = { viewModel.deleteNote(it) },
-                        onAddNoteClick = { viewModel.setCreateNoteOpen(true) }
+                        onAddNoteClick = { viewModel.setCreateNoteOpen(true) },
+                        translatedNotes = translatedNotes,
+                        onTranslateNote = { viewModel.translateNoteToEnglish(it) }
                     )
                 }
                 NavigationTab.DIAGNOSTICS -> {

@@ -697,7 +697,7 @@ fun EmailDetailSheet(
                     )
                 } else {
                     Text(
-                        text = MailTextFormatter.plainText(email.bodyText.ifBlank { email.bodyHtml }),
+                        text = MailTextFormatter.readableBody(email.bodyText.ifBlank { email.bodyHtml }),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = 24.sp
@@ -727,7 +727,7 @@ fun EmailDetailSheet(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = currentTranslation.translatedText,
+                    text = MailTextFormatter.readableBody(currentTranslation.translatedText),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 24.sp
@@ -748,7 +748,7 @@ fun EmailDetailSheet(
                 )
             } else {
                 Text(
-                    text = email.bodyText,
+                    text = MailTextFormatter.readableBody(email.bodyText.ifBlank { email.bodyHtml }),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 24.sp

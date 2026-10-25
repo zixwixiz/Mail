@@ -14,4 +14,15 @@ object MailTextFormatter {
             .toString()
             .replace(Regex("[\\t\\n\\r ]+"), " ")
             .trim()
+
+    /** Readable email-body text that preserves paragraph breaks and list spacing. */
+    fun readableBody(value: String): String =
+        HtmlCompat.fromHtml(value, HtmlCompat.FROM_HTML_MODE_LEGACY)
+            .toString()
+            .replace("\r\n", "\n")
+            .replace(Regex("[\\t ]+\\n"), "\n")
+            .replace(Regex("\\n[\\t ]+"), "\n")
+            .replace(Regex("[\\t ]{2,}"), " ")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
 }

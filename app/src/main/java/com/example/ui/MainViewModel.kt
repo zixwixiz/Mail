@@ -88,6 +88,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = JluRepository(database, credentialStore = MailboxCredentialStore(application.applicationContext))
 
     private val preferences = application.getSharedPreferences("mail_preferences", Application.MODE_PRIVATE)
+    /** Timestamp from the prior app session; zero when this is the first recorded launch. */
+    val previousAppOpenedTimestamp: Long = preferences.getLong("last_app_opened_timestamp", 0L).also {
+        preferences.edit().putLong("last_app_opened_timestamp", System.currentTimeMillis()).apply()
+    }
 
     private val _autoTranslateOnOpen = MutableStateFlow(
         preferences.getBoolean("auto_translate_on_open", false)
@@ -287,6 +291,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { database.translationDao().getTranslationsForMailbox(it.id, "en") }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _translatedNotes = MutableStateFlow<Map<String, String>>(emptyMap())
+    val translatedNotes: StateFlow<Map<String, String>> = _translatedNotes.asStateFlow()
+
+    fun translateNoteToEnglish(note: NoteEntity) {
+        if (_translatedNotes.value.containsKey(note.id)) return
+        viewModelScope.launch {
+            val english = TranslationService.SUPPORTED_LANGUAGES.first { it.code == "en" }
+            val result = TranslationService.translateGermanAcademicTextOnline(note.content, english)
+            _translatedNotes.value = _translatedNotes.value + (note.id to result.translatedText)
+            if (result.isPartial) showFeedback("Note translation may be incomplete; compare with the original.", isError = false)
+        }
+    }
+
     private val _translationProgress = MutableStateFlow(MailboxTranslationProgress())
     val translationProgress: StateFlow<MailboxTranslationProgress> = _translationProgress.asStateFlow()
 
@@ -422,6 +439,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Mark as read
             viewModelScope.launch {
                 repository.setReadState(email.id, true)
+                database.mailDao().setLastOpenedTimestamp(email.id, System.currentTimeMillis())
             }
             // Extract smart suggestions
             _smartSuggestions.value = SmartExtractor.extractSuggestions(email.subject, email.bodyText, email.id, email.receivedTimestamp)
