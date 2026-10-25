@@ -35,7 +35,7 @@ object MailTextFormatter {
             return marker
         }
 
-        var prepared = prepareHtml(value)
+        val prepared = prepareHtml(value)
             .replace(listItemStart) { token("• ") }
             .replace(listItemEnd) { token("\n") }
             .replace(breakTags) { token("\n") }
@@ -48,7 +48,6 @@ object MailTextFormatter {
 
         var decoded = HtmlCompat.fromHtml(prepared, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
         tokens.forEach { (marker, replacement) -> decoded = decoded.replace(marker, replacement) }
-        prepared = ""
         return normalize(decoded, preserveParagraphs = true)
     }
 
